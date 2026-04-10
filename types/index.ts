@@ -44,7 +44,7 @@ export type WatchlistItem = {
   user_id: string
   symbol: string
   name: string
-  asset_type: 'crypto' | 'stock'
+  asset_type: 'crypto' | 'stock' | 'cash'
   added_at: string
   current_price?: number
   change_24h?: number

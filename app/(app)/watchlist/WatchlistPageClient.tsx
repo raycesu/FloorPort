@@ -18,11 +18,11 @@ export function WatchlistPageClient({ initialItems }: { initialItems: WatchlistI
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-white">Watchlist</h1>
+        <h1 className="text-[20px] font-semibold text-fp-text">Watchlist</h1>
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="rounded-lg border border-fp-accent/50 px-4 py-2 text-sm font-semibold text-fp-accent hover:bg-fp-accent/10"
+          className="rounded-lg bg-fp-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90"
         >
           Add symbol
         </button>

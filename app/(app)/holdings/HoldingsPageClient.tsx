@@ -113,108 +113,110 @@ export function HoldingsPageClient({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-white">Holdings</h1>
+        <h1 className="text-2xl font-semibold text-fp-text">Holdings</h1>
         <button
           type="button"
           onClick={() => setAddOpen(true)}
           disabled={!initialWalletId}
-          className="rounded-lg bg-fp-accent px-4 py-2 text-sm font-semibold text-[#0d0d14] hover:opacity-90 disabled:opacity-40"
+          className="rounded-lg bg-fp-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
         >
           Add holding
         </button>
       </div>
 
-      <div className="flex flex-wrap items-end gap-3 rounded-xl border border-white/10 bg-fp-surface p-4">
-        <div className="min-w-[200px] flex-1">
-          <label className="text-xs text-zinc-500">Wallet</label>
-          <select
-            className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-fp-accent"
-            value={initialWalletId}
-            onChange={(e) => selectWallet(e.target.value)}
-          >
-            {wallets.map((w) => (
-              <option key={w.id} value={w.id}>
-                {w.name} · {formatMoney(walletValues[w.id] ?? 0, currency, usdToCad)}
-              </option>
-            ))}
-          </select>
-          {initialWalletId ? (
-            <p className="mt-1.5 text-xs tabular-nums text-zinc-500">
-              Wallet value{' '}
-              <span className="font-medium text-zinc-300">
-                {formatMoney(walletValues[initialWalletId] ?? 0, currency, usdToCad)}
-              </span>
-            </p>
+      <div className="rounded-xl border border-fp-border bg-fp-surface p-5">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[220px] flex-1">
+            <label className="text-xs text-fp-muted">Wallet</label>
+            <select
+              className="mt-1 h-9 w-full rounded-lg border border-fp-border bg-fp-surface px-3 text-sm"
+              value={initialWalletId}
+              onChange={(e) => selectWallet(e.target.value)}
+            >
+              {wallets.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          {currentWallet ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setRenameId(currentWallet.id)
+                  setRenameName(currentWallet.name)
+                }}
+                className="rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-medium text-fp-muted hover:border-fp-border hover:text-fp-text"
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void deleteWallet(currentWallet.id)}
+                className="rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-medium text-fp-negative hover:border-fp-negative"
+              >
+                Delete wallet
+              </button>
+            </div>
           ) : null}
+          <form onSubmit={createWallet} className="ml-auto flex flex-wrap items-end gap-2">
+            <div>
+              <label className="text-xs text-fp-muted">New wallet name</label>
+              <input
+                value={newWalletName}
+                onChange={(e) => setNewWalletName(e.target.value)}
+                placeholder="Name"
+                className="mt-1 h-9 w-44 rounded-lg border border-fp-input-border bg-fp-surface px-3 text-sm"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={busy || !newWalletName.trim()}
+              className="h-9 rounded-lg bg-fp-accent px-4 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
+            >
+              Create
+            </button>
+          </form>
         </div>
-        {currentWallet ? (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                setRenameId(currentWallet.id)
-                setRenameName(currentWallet.name)
-              }}
-              className="rounded-lg border border-white/15 px-3 py-2 text-sm text-zinc-300 hover:bg-white/5"
-            >
-              Rename
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void deleteWallet(currentWallet.id)}
-              className="rounded-lg border border-fp-negative/40 px-3 py-2 text-sm text-fp-negative hover:bg-fp-negative/10"
-            >
-              Delete wallet
-            </button>
-          </div>
+        {initialWalletId ? (
+          <p className="mt-2 text-[13px] tabular-nums text-fp-muted">
+            Wallet value:{' '}
+            <span className="font-medium text-fp-text">
+              {formatMoney(walletValues[initialWalletId] ?? 0, currency, usdToCad)}
+            </span>
+          </p>
         ) : null}
-        <form onSubmit={createWallet} className="flex flex-wrap items-end gap-2">
-          <div>
-            <label className="text-xs text-zinc-500">New wallet</label>
-            <input
-              value={newWalletName}
-              onChange={(e) => setNewWalletName(e.target.value)}
-              placeholder="Name"
-              className="mt-1 w-40 rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:ring-2 focus:ring-fp-accent"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={busy || !newWalletName.trim()}
-            className="rounded-lg bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15 disabled:opacity-40"
-          >
-            Create
-          </button>
-        </form>
       </div>
 
       {renameId ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <form
             onSubmit={saveRename}
-            className="w-full max-w-sm rounded-xl border border-white/10 bg-[#16161f] p-5 shadow-xl"
+            className="w-full max-w-sm rounded-xl border border-fp-border bg-fp-surface p-6"
           >
-            <h3 className="text-sm font-semibold text-white">Rename wallet</h3>
+            <h3 className="text-sm font-semibold text-fp-text">Rename wallet</h3>
             <input
               value={renameName}
               onChange={(e) => setRenameName(e.target.value)}
-              className="mt-3 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-white"
+              className="mt-3 w-full"
               autoFocus
             />
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setRenameId(null)}
-                className="rounded-lg px-3 py-1.5 text-sm text-zinc-400 hover:bg-white/10"
+                className="rounded-lg border border-fp-border bg-transparent px-5 py-2.5 text-sm text-fp-muted hover:bg-fp-page"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={busy}
-                className="rounded-lg bg-fp-accent px-3 py-1.5 text-sm font-semibold text-[#0d0d14]"
+                className="rounded-lg bg-fp-accent px-5 py-2.5 text-sm font-medium text-white"
               >
                 Save
               </button>

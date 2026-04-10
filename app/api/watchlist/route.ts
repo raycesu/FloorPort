@@ -41,7 +41,14 @@ export async function POST(request: NextRequest) {
     .trim()
     .toUpperCase()
   const name = String(body.name ?? '').trim()
-  const asset_type = body.asset_type === 'stock' ? 'stock' : body.asset_type === 'crypto' ? 'crypto' : null
+  const asset_type =
+    body.asset_type === 'stock'
+      ? 'stock'
+      : body.asset_type === 'crypto'
+        ? 'crypto'
+        : body.asset_type === 'cash'
+          ? 'cash'
+          : null
 
   if (!symbol || !name || !asset_type) {
     return NextResponse.json({ error: 'Invalid watchlist fields' }, { status: 400 })

@@ -1,24 +1,77 @@
 'use client'
 
 import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
 
 export function AuthForm() {
   const router = useRouter()
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin')
+  const searchParams = useSearchParams()
+  const [mode, setMode] = useState<'signin' | 'signup' | 'recovery'>('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  const isRecovery = mode === 'recovery'
+  const supabase = useMemo(() => createClient(), [])
+
+  useEffect(() => {
+    if (searchParams.get('mode') === 'recovery') {
+      setMode('recovery')
+      setNotice('Set a new password for your account.')
+    }
+  }, [searchParams])
+
+  useEffect(() => {
+    const hash = typeof window !== 'undefined' ? window.location.hash : ''
+    if (hash.includes('type=recovery')) {
+      setMode('recovery')
+      setNotice('Set a new password for your account.')
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setMode('recovery')
+        setNotice('Set a new password for your account.')
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [supabase.auth])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+    setNotice(null)
     setLoading(true)
-    const supabase = createClient()
 
     try {
+      if (isRecovery) {
+        if (password.length < 6) {
+          setError('Password must be at least 6 characters')
+          return
+        }
+        if (password !== confirmPassword) {
+          setError('Passwords do not match')
+          return
+        }
+        const { error: err } = await supabase.auth.updateUser({ password })
+        if (err) {
+          setError(err.message)
+          return
+        }
+        setNotice('Password updated. Redirecting to your dashboard...')
+        router.replace('/dashboard')
+        router.refresh()
+        return
+      }
+
       if (mode === 'signup') {
         const { error: err } = await supabase.auth.signUp({
           email,
@@ -45,20 +98,44 @@ export function AuthForm() {
     }
   }
 
-  return (
-    <div className="mx-auto w-full max-w-md rounded-xl border border-white/10 bg-fp-surface p-8 shadow-xl backdrop-blur">
-      <h1 className="text-center text-2xl font-semibold tracking-tight text-white">FloorPort</h1>
-      <p className="mt-1 text-center text-sm text-zinc-400">Portfolio tracker for crypto &amp; stocks</p>
+  async function onForgotPassword() {
+    setError(null)
+    setNotice(null)
+    const trimmedEmail = email.trim()
+    if (!trimmedEmail) {
+      setError('Enter your email first, then try again.')
+      return
+    }
 
-      <div className="mt-8 flex rounded-lg bg-black/30 p-1">
+    setResetLoading(true)
+    try {
+      const redirectTo =
+        typeof window !== 'undefined' ? `${window.location.origin}/login?mode=recovery` : undefined
+      const { error: err } = await supabase.auth.resetPasswordForEmail(trimmedEmail, { redirectTo })
+      if (err) {
+        setError(err.message)
+        return
+      }
+      setNotice('Password reset link sent. Check your email.')
+    } finally {
+      setResetLoading(false)
+    }
+  }
+
+  return (
+    <div className="mx-auto w-full max-w-md bg-fp-surface">
+      <div className="flex border-b border-fp-border">
         <button
           type="button"
           onClick={() => {
             setMode('signin')
             setError(null)
+            setNotice(null)
           }}
-          className={`flex-1 rounded-md py-2 text-sm font-medium transition ${
-            mode === 'signin' ? 'bg-fp-accent/20 text-fp-accent' : 'text-zinc-400 hover:text-zinc-200'
+          className={`border-b-2 px-1 py-3 text-sm font-medium transition ${
+            mode === 'signin'
+              ? 'border-fp-accent text-fp-accent'
+              : 'border-transparent text-fp-muted hover:text-fp-text'
           }`}
         >
           Sign in
@@ -68,33 +145,51 @@ export function AuthForm() {
           onClick={() => {
             setMode('signup')
             setError(null)
+            setNotice(null)
           }}
-          className={`flex-1 rounded-md py-2 text-sm font-medium transition ${
-            mode === 'signup' ? 'bg-fp-accent/20 text-fp-accent' : 'text-zinc-400 hover:text-zinc-200'
+          className={`ml-6 border-b-2 px-1 py-3 text-sm font-medium transition ${
+            mode === 'signup'
+              ? 'border-fp-accent text-fp-accent'
+              : 'border-transparent text-fp-muted hover:text-fp-text'
           }`}
         >
           Sign up
         </button>
       </div>
 
+      <div className="mt-6">
+        <h1 className="text-[24px] font-semibold text-fp-text">
+          {isRecovery ? 'Set new password' : mode === 'signup' ? 'Create account' : 'Welcome back'}
+        </h1>
+        <p className="mt-1 text-sm text-fp-muted">
+          {isRecovery
+            ? 'Choose a strong password to secure your account.'
+            : mode === 'signup'
+            ? 'Start tracking your crypto and stock portfolio.'
+            : 'Sign in to continue to your FloorPort dashboard.'}
+        </p>
+      </div>
+
       <form onSubmit={onSubmit} className="mt-6 space-y-4">
+        {!isRecovery ? (
+          <div>
+            <label htmlFor="email" className="block text-[13px] font-medium text-fp-muted">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              autoComplete="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="mt-1 h-11 w-full"
+            />
+          </div>
+        ) : null}
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-zinc-300">
-            Email
-          </label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-white outline-none ring-fp-accent focus:ring-2"
-          />
-        </div>
-        <div>
-          <label htmlFor="password" className="block text-sm font-medium text-zinc-300">
-            Password
+          <label htmlFor="password" className="block text-[13px] font-medium text-fp-muted">
+            {isRecovery ? 'New password' : 'Password'}
           </label>
           <input
             id="password"
@@ -104,22 +199,62 @@ export function AuthForm() {
             minLength={6}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-white outline-none ring-fp-accent focus:ring-2"
+            className="mt-1 h-11 w-full"
           />
+          {mode === 'signin' ? (
+            <div className="mt-2 text-right">
+              <button
+                type="button"
+                onClick={() => void onForgotPassword()}
+                disabled={resetLoading}
+                className="text-[13px] text-fp-muted hover:text-fp-text disabled:opacity-60"
+              >
+                {resetLoading ? 'Sending...' : 'Forgot password?'}
+              </button>
+            </div>
+          ) : null}
         </div>
+        {isRecovery ? (
+          <div>
+            <label htmlFor="confirmPassword" className="block text-[13px] font-medium text-fp-muted">
+              Confirm password
+            </label>
+            <input
+              id="confirmPassword"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={6}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="mt-1 h-11 w-full"
+            />
+          </div>
+        ) : null}
 
         {error ? (
           <p className="rounded-lg bg-fp-negative/10 px-3 py-2 text-sm text-fp-negative" role="alert">
             {error}
           </p>
         ) : null}
+        {notice ? (
+          <p className="rounded-lg bg-fp-buy-bg px-3 py-2 text-sm text-fp-buy-text" role="status">
+            {notice}
+          </p>
+        ) : null}
 
         <button
           type="submit"
           disabled={loading}
-          className="flex w-full items-center justify-center rounded-lg bg-fp-accent py-2.5 text-sm font-semibold text-[#0d0d14] transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 w-full items-center justify-center rounded-lg bg-fp-accent px-5 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {loading ? 'Please wait…' : mode === 'signup' ? 'Create account' : 'Sign in'}
+          {loading
+            ? 'Please wait...'
+            : isRecovery
+              ? 'Update password'
+              : mode === 'signup'
+                ? 'Create account'
+                : 'Sign in'}
         </button>
       </form>
     </div>

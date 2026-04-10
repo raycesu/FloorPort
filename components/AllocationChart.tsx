@@ -32,25 +32,25 @@ export function AllocationChart({ holdings }: { holdings: Holding[] }) {
 
   if (data.length === 0) {
     return (
-      <div className="flex h-[320px] items-center justify-center rounded-xl border border-white/10 bg-fp-surface text-sm text-zinc-500">
+      <div className="flex h-[320px] items-center justify-center rounded-xl border border-fp-border bg-fp-surface text-sm text-fp-muted">
         Add holdings to see allocation
       </div>
     )
   }
 
   return (
-    <div className="rounded-xl border border-white/10 bg-fp-surface p-4 backdrop-blur">
-      <h2 className="mb-4 text-sm font-semibold text-zinc-300">Allocation</h2>
+    <div className="rounded-xl border border-fp-border bg-fp-surface p-5">
+      <h2 className="mb-4 text-sm font-semibold text-fp-text">Allocation</h2>
       <div className="h-[280px] w-full">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" />
-            <XAxis type="number" tick={{ fill: '#71717a', fontSize: 11 }} tickFormatter={(v) => `${v.toFixed(0)}%`} domain={[0, 'dataMax']} />
+            <CartesianGrid strokeDasharray="3 3" stroke="#e8e8e6" />
+            <XAxis type="number" tick={{ fill: '#6b6b6b', fontSize: 11 }} tickFormatter={(v) => `${v.toFixed(0)}%`} domain={[0, 'dataMax']} />
             <YAxis
               type="category"
               dataKey="name"
               width={48}
-              tick={{ fill: '#a1a1aa', fontSize: 11 }}
+              tick={{ fill: '#6b6b6b', fontSize: 11 }}
             />
             <Tooltip
               cursor={false}
@@ -62,7 +62,7 @@ export function AllocationChart({ holdings }: { holdings: Holding[] }) {
                 const fg = contrastTextForBackground(bg)
                 return (
                   <div
-                    className="rounded-lg px-3 py-2 text-xs shadow-lg ring-1 ring-black/20"
+                    className="rounded-lg border border-fp-border px-3 py-2 text-xs"
                     style={{ backgroundColor: bg, color: fg }}
                   >
                     <p className="font-medium" style={{ color: fg }}>

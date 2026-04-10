@@ -17,17 +17,17 @@ export function WatchlistTable({
 
   if (items.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-white/15 bg-fp-surface py-16 text-center text-sm text-zinc-500">
+      <div className="rounded-xl border border-dashed border-fp-border bg-fp-surface py-16 text-center text-sm text-fp-muted">
         Your watchlist is empty. Add symbols to track prices without holding them.
       </div>
     )
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-white/10 bg-fp-surface">
+    <div className="overflow-x-auto rounded-xl bg-fp-surface">
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead>
-          <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-zinc-500">
+          <tr className="border-b border-fp-border text-[11px] uppercase tracking-wide text-fp-muted">
             <th className="px-4 py-3">Symbol</th>
             <th className="px-4 py-3">Name</th>
             <th className="px-4 py-3">Type</th>
@@ -41,36 +41,42 @@ export function WatchlistTable({
           {items.map((w) => {
             const ch = w.change_24h
             const chClass =
-              ch == null ? 'text-zinc-500' : ch >= 0 ? 'text-fp-positive' : 'text-fp-negative'
+              ch == null ? 'text-fp-muted' : ch >= 0 ? 'text-fp-positive' : 'text-fp-negative'
             return (
-              <tr key={w.id} className="border-b border-white/5 hover:bg-white/[0.02]">
-                <td className="px-4 py-3 font-medium text-white">{w.symbol}</td>
-                <td className="px-4 py-3 text-zinc-400">{w.name}</td>
-                <td className="px-4 py-3">
+              <tr key={w.id} className="h-12 border-b border-fp-border hover:bg-fp-page">
+                <td className="px-4 py-2 font-medium text-fp-text">{w.symbol}</td>
+                <td className="px-4 py-2 text-fp-muted">{w.name}</td>
+                <td className="px-4 py-2">
                   <span
                     className={`rounded px-2 py-0.5 text-xs font-medium ${
                       w.asset_type === 'crypto'
-                        ? 'bg-fp-crypto/15 text-fp-crypto'
-                        : 'bg-fp-stock/15 text-fp-stock'
+                        ? 'bg-fp-crypto-bg text-fp-crypto-text'
+                        : w.asset_type === 'stock'
+                          ? 'bg-fp-stock-bg text-fp-stock-text'
+                          : 'bg-fp-page text-fp-muted'
                     }`}
                   >
                     {w.asset_type}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-zinc-200">
+                <td className="px-4 py-2 text-right tabular-nums text-fp-text">
                   {w.current_price != null ? m(w.current_price) : '—'}
                 </td>
-                <td className={`px-4 py-3 text-right tabular-nums text-sm ${chClass}`}>
+                <td className={`px-4 py-2 text-right tabular-nums text-sm font-medium ${chClass}`}>
                   {ch != null ? formatPercent(ch) : '—'}
                 </td>
-                <td className="px-4 py-3">
-                  <PriceChart symbol={w.symbol} assetType={w.asset_type} />
+                <td className="px-4 py-2">
+                  {w.asset_type === 'cash' ? (
+                    <span className="text-xs text-fp-muted">—</span>
+                  ) : (
+                    <PriceChart symbol={w.symbol} assetType={w.asset_type} compact />
+                  )}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-2 text-right">
                   <button
                     type="button"
                     onClick={() => onRemove(w.id)}
-                    className="text-sm text-fp-negative hover:underline"
+                    className="text-[13px] text-fp-negative hover:underline"
                   >
                     Remove
                   </button>

@@ -1,16 +1,67 @@
 @import 'tailwindcss';
 
 @theme inline {
-  --color-fp-bg: #0d0d14;
-  --color-fp-surface: rgba(255, 255, 255, 0.04);
-  --color-fp-accent: #a89cf7;
-  --color-fp-positive: #4ade80;
-  --color-fp-negative: #f87171;
-  --color-fp-crypto: #5dcaa5;
-  --color-fp-stock: #378add;
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --color-fp-bg: #ffffff;
+  --color-fp-page: #f7f7f5;
+  --color-fp-surface: #ffffff;
+  --color-fp-card: #ffffff;
+  --color-fp-nav: #ffffff;
+  --color-fp-accent: #7c6fd4;
+  --color-fp-positive: #1a9e6e;
+  --color-fp-negative: #e03e3e;
+  --color-fp-text: #1a1a1a;
+  --color-fp-muted: #6b6b6b;
+  --color-fp-border: #e8e8e6;
+  --color-fp-input-border: #d0d0cc;
+  --color-fp-crypto-bg: #ede9fe;
+  --color-fp-crypto-text: #4c3d9e;
+  --color-fp-stock-bg: #e0f2ed;
+  --color-fp-stock-text: #0f7a56;
+  --color-fp-buy-bg: #e0f2ed;
+  --color-fp-buy-text: #0f7a56;
+  --color-fp-sell-bg: #fde8e8;
+  --color-fp-sell-text: #c0392b;
+  --font-sans: var(--font-inter), Inter, ui-sans-serif, system-ui, sans-serif;
 }
 
 body {
-  @apply bg-fp-bg text-zinc-100 antialiased;
+  @apply bg-fp-page text-fp-text antialiased;
+  font-size: 14px;
+  line-height: 1.6;
+  font-weight: 400;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+}
+
+input,
+select,
+textarea {
+  @apply rounded-lg border border-fp-input-border bg-fp-surface px-3.5 py-2.5 text-fp-text outline-none;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  box-shadow: 0 0 0 2px #7c6fd4;
+}
+
+@media (prefers-color-scheme: dark) {
+  @theme inline {
+    --color-fp-bg: #0f0f0f;
+    --color-fp-page: #0f0f0f;
+    --color-fp-surface: #1a1a1a;
+    --color-fp-card: #1a1a1a;
+    --color-fp-nav: #1a1a1a;
+    --color-fp-text: #f0f0f0;
+    --color-fp-muted: #888888;
+    --color-fp-border: #2a2a2a;
+    --color-fp-input-border: #2a2a2a;
+  }
 }

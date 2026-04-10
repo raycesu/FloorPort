@@ -73,32 +73,32 @@ export function EditHoldingModal({ holding, open, onClose, onDone }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl border border-white/10 bg-[#16161f] p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md rounded-xl border border-fp-border bg-fp-surface p-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">Edit {h.symbol}</h2>
+          <h2 className="text-lg font-semibold text-fp-text">Edit {h.symbol}</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-zinc-400 hover:bg-white/10"
+            className="rounded-lg p-1 text-fp-muted hover:bg-fp-page"
             aria-label="Close"
           >
             ✕
           </button>
         </div>
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="mt-1 text-xs text-fp-muted">
           {isCash
             ? 'Update your cash balance. Cost basis is not tracked for cash.'
             : 'If quantity changes, add a trade price for the bought/sold amount (optional — otherwise avg buy is used).'}
         </p>
         <form onSubmit={submit} className="mt-4 space-y-3">
           <div>
-            <label className="text-xs text-zinc-400">{isCash ? 'Balance' : 'Quantity'}</label>
+            <label className="text-xs text-fp-muted">{isCash ? 'Balance' : 'Quantity'}</label>
             <input
               type="number"
               step="any"
               min="0"
-              className="mt-0.5 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-fp-accent"
+              className="mt-0.5 w-full"
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
               required
@@ -107,27 +107,27 @@ export function EditHoldingModal({ holding, open, onClose, onDone }: Props) {
           {isCash ? null : (
             <>
               <div>
-                <label className="text-xs text-zinc-400">Avg buy price (USD)</label>
+                <label className="text-xs text-fp-muted">Avg buy price (USD)</label>
                 <input
                   type="number"
                   step="any"
                   min="0"
-                  className="mt-0.5 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-fp-accent"
+                  className="mt-0.5 w-full"
                   value={avgBuy}
                   onChange={(e) => setAvgBuy(e.target.value)}
                   required
                 />
-                <p className="mt-1 text-xs text-zinc-600">
+                <p className="mt-1 text-xs text-fp-muted">
                   ≈ {formatMoney(parseFloat(avgBuy) || 0, currency, usdToCad)} displayed
                 </p>
               </div>
               <div>
-                <label className="text-xs text-zinc-400">Trade price for delta (optional)</label>
+                <label className="text-xs text-fp-muted">Trade price for delta (optional)</label>
                 <input
                   type="number"
                   step="any"
                   min="0"
-                  className="mt-0.5 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-fp-accent"
+                  className="mt-0.5 w-full"
                   value={tradePrice}
                   onChange={(e) => setTradePrice(e.target.value)}
                   placeholder="Per unit when quantity changes"
@@ -140,14 +140,14 @@ export function EditHoldingModal({ holding, open, onClose, onDone }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm text-zinc-300 hover:bg-white/10"
+              className="rounded-lg border border-fp-border bg-transparent px-5 py-2.5 text-sm text-fp-muted hover:bg-fp-page"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="rounded-lg bg-fp-accent px-4 py-2 text-sm font-semibold text-[#0d0d14] disabled:opacity-50"
+              className="rounded-lg bg-fp-accent px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
             >
               {loading ? 'Saving…' : 'Save'}
             </button>

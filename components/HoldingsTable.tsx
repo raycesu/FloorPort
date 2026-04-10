@@ -23,17 +23,17 @@ export function HoldingsTable({
 
   if (holdings.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-white/15 bg-fp-surface py-16 text-center text-sm text-zinc-500">
+      <div className="rounded-xl border border-dashed border-fp-border bg-fp-surface py-16 text-center text-sm text-fp-muted">
         No holdings yet. Add one to get started.
       </div>
     )
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-white/10 bg-fp-surface">
+    <div className="overflow-x-auto rounded-xl bg-fp-surface">
       <table className="w-full min-w-[800px] text-left text-sm">
         <thead>
-          <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-zinc-500">
+          <tr className="border-b border-fp-border text-[11px] uppercase tracking-wide text-fp-muted">
             <th className="px-4 py-3">Symbol</th>
             <th className="px-4 py-3">Type</th>
             <th className="px-4 py-3 text-right">Qty</th>
@@ -54,28 +54,28 @@ export function HoldingsTable({
             const isCash = h.asset_type === 'cash'
             const typeClass =
               h.asset_type === 'crypto'
-                ? 'bg-fp-crypto/15 text-fp-crypto'
+                ? 'bg-fp-crypto-bg text-fp-crypto-text'
                 : h.asset_type === 'stock'
-                  ? 'bg-fp-stock/15 text-fp-stock'
-                  : 'bg-zinc-500/15 text-zinc-300'
+                  ? 'bg-fp-stock-bg text-fp-stock-text'
+                  : 'bg-fp-page text-fp-muted'
             return (
-              <tr key={h.id} className="border-b border-white/5 hover:bg-white/[0.02]">
-                <td className="px-4 py-3 font-medium text-white">{h.symbol}</td>
+              <tr key={h.id} className="border-b border-fp-border hover:bg-fp-page/70">
+                <td className="px-4 py-3 font-medium text-fp-text">{h.symbol}</td>
                 <td className="px-4 py-3">
                   <span className={`rounded px-2 py-0.5 text-xs font-medium ${typeClass}`}>
                     {h.asset_type}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-zinc-300">
+                <td className="px-4 py-3 text-right tabular-nums text-fp-muted">
                   {formatQuantity(h.quantity)}
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-zinc-300">
+                <td className="px-4 py-3 text-right tabular-nums text-fp-muted">
                   {isCash ? '—' : m(h.avg_buy_price)}
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-zinc-300">
+                <td className="px-4 py-3 text-right tabular-nums text-fp-muted">
                   {h.current_price != null ? m(h.current_price) : '—'}
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums text-zinc-200">
+                <td className="px-4 py-3 text-right tabular-nums text-fp-text">
                   {h.current_value != null ? m(h.current_value) : '—'}
                 </td>
                 <td className={`px-4 py-3 text-right tabular-nums font-medium ${pnlClass}`}>
@@ -87,7 +87,7 @@ export function HoldingsTable({
                 {showChart ? (
                   <td className="px-4 py-3">
                     {isCash ? (
-                      <span className="text-xs text-zinc-600">—</span>
+                      <span className="text-xs text-fp-muted">—</span>
                     ) : (
                       <PriceChart
                         symbol={h.symbol}
@@ -101,14 +101,14 @@ export function HoldingsTable({
                     <button
                       type="button"
                       onClick={() => onEdit?.(h)}
-                      className="mr-2 text-fp-accent hover:underline"
+                      className="mr-2 text-[13px] text-fp-accent hover:underline"
                     >
                       Edit
                     </button>
                     <button
                       type="button"
                       onClick={() => onDelete?.(h)}
-                      className="text-fp-negative hover:underline"
+                      className="text-[13px] text-fp-negative hover:underline"
                     >
                       Delete
                     </button>

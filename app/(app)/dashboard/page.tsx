@@ -32,7 +32,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
+      <h1 className="text-2xl font-semibold text-fp-text">Dashboard</h1>
       <PortfolioSummary summary={summary} />
       <div className="grid gap-6 lg:grid-cols-2">
         <AllocationChart holdings={enriched} />

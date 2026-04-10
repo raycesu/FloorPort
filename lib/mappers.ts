@@ -37,12 +37,14 @@ export function mapRowToTransaction(row: Record<string, unknown>): Transaction {
 }
 
 export function mapRowToWatchlist(row: Record<string, unknown>): WatchlistItem {
+  const assetType =
+    row.asset_type === 'stock' ? 'stock' : row.asset_type === 'cash' ? 'cash' : 'crypto'
   return {
     id: String(row.id),
     user_id: String(row.user_id),
     symbol: String(row.symbol),
     name: String(row.name),
-    asset_type: row.asset_type === 'stock' ? 'stock' : 'crypto',
+    asset_type: assetType,
     added_at: String(row.added_at),
   }
 }

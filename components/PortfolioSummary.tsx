@@ -8,16 +8,16 @@ export function PortfolioSummary({ summary }: { summary: Summary }) {
   const { currency, usdToCad } = useDisplayCurrency()
   const m = (n: number) => formatMoney(n, currency, usdToCad)
   const cards = [
-    { label: 'Total value', value: m(summary.total_value), accent: 'text-white' },
+    { label: 'Total value', value: m(summary.total_value), accent: 'text-fp-text' },
     {
       label: 'Total gain / loss',
       value: m(summary.total_pnl),
       sub: formatPercent(summary.total_pnl_percent),
       accent: summary.total_pnl >= 0 ? 'text-fp-positive' : 'text-fp-negative',
     },
-    { label: 'Crypto total', value: m(summary.crypto_value), accent: 'text-fp-crypto' },
-    { label: 'Stocks total', value: m(summary.stock_value), accent: 'text-fp-stock' },
-    { label: 'Cash total', value: m(summary.cash_value), accent: 'text-zinc-200' },
+    { label: 'Crypto total', value: m(summary.crypto_value), accent: 'text-fp-crypto-text' },
+    { label: 'Stocks total', value: m(summary.stock_value), accent: 'text-fp-stock-text' },
+    { label: 'Cash total', value: m(summary.cash_value), accent: 'text-fp-text' },
   ]
 
   return (
@@ -25,9 +25,9 @@ export function PortfolioSummary({ summary }: { summary: Summary }) {
       {cards.map((c) => (
         <div
           key={c.label}
-          className="rounded-xl border border-white/10 bg-fp-surface px-5 py-4 backdrop-blur"
+          className="rounded-xl border border-fp-border bg-fp-surface px-6 py-5"
         >
-          <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">{c.label}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-fp-muted">{c.label}</p>
           <p className={`mt-1 text-xl font-semibold tabular-nums ${c.accent}`}>{c.value}</p>
           {'sub' in c && c.sub ? (
             <p

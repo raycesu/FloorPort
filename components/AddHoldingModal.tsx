@@ -198,18 +198,18 @@ export function AddHoldingModal({ open, walletId, onClose, onDone }: Props) {
   const showList = listOpen && results.length > 0 && (!selected || query !== selected.symbol)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div
         role="dialog"
         aria-modal="true"
-        className="w-full max-w-md rounded-xl border border-white/10 bg-[#16161f] p-6 shadow-2xl"
+        className="w-full max-w-md rounded-xl border border-fp-border bg-fp-surface p-6"
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-white">Add holding</h2>
+          <h2 className="text-lg font-semibold text-fp-text">Add holding</h2>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-1 text-zinc-400 hover:bg-white/10 hover:text-white"
+            className="rounded-lg p-1 text-fp-muted hover:bg-fp-page hover:text-fp-text"
             aria-label="Close"
           >
             ✕
@@ -218,11 +218,11 @@ export function AddHoldingModal({ open, walletId, onClose, onDone }: Props) {
 
         <form onSubmit={submit} className="mt-4 space-y-3">
           <div className="relative">
-            <label className="text-xs text-zinc-400">
+            <label className="text-xs text-fp-muted">
               {assetType === 'cash' ? 'Currency' : 'Symbol'}
             </label>
             <input
-              className="mt-0.5 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-fp-accent"
+              className="mt-0.5 w-full"
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value)
@@ -234,22 +234,22 @@ export function AddHoldingModal({ open, walletId, onClose, onDone }: Props) {
               autoComplete="off"
             />
             {searching ? (
-              <p className="mt-1 text-xs text-zinc-500">Searching…</p>
+              <p className="mt-1 text-xs text-fp-muted">Searching…</p>
             ) : null}
             {showList ? (
               <ul
-                className="absolute z-10 mt-1 max-h-[11rem] w-full overflow-auto rounded-lg border border-white/10 bg-[#1a1a24] py-1 shadow-xl"
+                className="absolute z-10 mt-1 max-h-[11rem] w-full overflow-auto rounded-lg border border-fp-border bg-fp-surface py-1"
                 role="listbox"
               >
                 {results.slice(0, 5).map((row) => (
                   <li key={`${row.symbol}-${row.coingecko_id ?? ''}`}>
                     <button
                       type="button"
-                      className="w-full px-3 py-2 text-left text-sm text-zinc-200 hover:bg-white/10"
+                      className="w-full px-3 py-2 text-left text-sm text-fp-text hover:bg-fp-page"
                       onClick={() => pickRow(row)}
                     >
-                      <span className="font-medium text-white">{row.symbol}</span>
-                      <span className="ml-2 text-zinc-500">{row.name}</span>
+                      <span className="font-medium text-fp-text">{row.symbol}</span>
+                      <span className="ml-2 text-fp-muted">{row.name}</span>
                     </button>
                   </li>
                 ))}
@@ -258,7 +258,7 @@ export function AddHoldingModal({ open, walletId, onClose, onDone }: Props) {
             {selected ? (
               <p className="mt-1 text-xs text-fp-positive">Selected: {selected.name}</p>
             ) : (
-              <p className="mt-1 text-xs text-zinc-500">Pick an item from the dropdown</p>
+              <p className="mt-1 text-xs text-fp-muted">Pick an item from the dropdown</p>
             )}
           </div>
 
@@ -267,7 +267,9 @@ export function AddHoldingModal({ open, walletId, onClose, onDone }: Props) {
               type="button"
               onClick={() => setAssetType('crypto')}
               className={`flex-1 rounded-lg py-2 text-sm font-medium ${
-                assetType === 'crypto' ? 'bg-fp-crypto/20 text-fp-crypto' : 'bg-white/5 text-zinc-400'
+                assetType === 'crypto'
+                  ? 'bg-fp-crypto-bg text-fp-crypto-text'
+                  : 'border border-fp-border bg-transparent text-fp-muted'
               }`}
             >
               Crypto
@@ -276,7 +278,9 @@ export function AddHoldingModal({ open, walletId, onClose, onDone }: Props) {
               type="button"
               onClick={() => setAssetType('stock')}
               className={`flex-1 rounded-lg py-2 text-sm font-medium ${
-                assetType === 'stock' ? 'bg-fp-stock/20 text-fp-stock' : 'bg-white/5 text-zinc-400'
+                assetType === 'stock'
+                  ? 'bg-fp-stock-bg text-fp-stock-text'
+                  : 'border border-fp-border bg-transparent text-fp-muted'
               }`}
             >
               Stock
@@ -285,7 +289,7 @@ export function AddHoldingModal({ open, walletId, onClose, onDone }: Props) {
               type="button"
               onClick={() => setAssetType('cash')}
               className={`flex-1 rounded-lg py-2 text-sm font-medium ${
-                assetType === 'cash' ? 'bg-zinc-600/30 text-zinc-200' : 'bg-white/5 text-zinc-400'
+                assetType === 'cash' ? 'bg-fp-page text-fp-text' : 'border border-fp-border bg-transparent text-fp-muted'
               }`}
             >
               Cash
@@ -294,14 +298,14 @@ export function AddHoldingModal({ open, walletId, onClose, onDone }: Props) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-zinc-400">
+              <label className="text-xs text-fp-muted">
                 {assetType === 'cash' ? 'Balance' : 'Quantity'}
               </label>
               <input
                 type="number"
                 step="any"
                 min="0"
-                className="mt-0.5 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-fp-accent"
+                className="mt-0.5 w-full"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
                 required
@@ -309,12 +313,12 @@ export function AddHoldingModal({ open, walletId, onClose, onDone }: Props) {
             </div>
             {assetType === 'cash' ? null : (
               <div>
-                <label className="text-xs text-zinc-400">Avg buy price (USD)</label>
+                <label className="text-xs text-fp-muted">Avg buy price (USD)</label>
                 <input
                   type="number"
                   step="any"
                   min="0"
-                  className="mt-0.5 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-fp-accent"
+                  className="mt-0.5 w-full"
                   value={avgBuy}
                   onChange={(e) => setAvgBuy(e.target.value)}
                   required
@@ -323,10 +327,10 @@ export function AddHoldingModal({ open, walletId, onClose, onDone }: Props) {
             )}
           </div>
           <div>
-            <label className="text-xs text-zinc-400">Purchase date</label>
+            <label className="text-xs text-fp-muted">Purchase date</label>
             <input
               type="datetime-local"
-              className="mt-0.5 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-white outline-none focus:ring-2 focus:ring-fp-accent"
+              className="mt-0.5 w-full"
               value={executedAt}
               onChange={(e) => setExecutedAt(e.target.value)}
             />
@@ -338,14 +342,14 @@ export function AddHoldingModal({ open, walletId, onClose, onDone }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm text-zinc-300 hover:bg-white/10"
+              className="rounded-lg border border-fp-border bg-transparent px-5 py-2.5 text-sm text-fp-muted hover:bg-fp-page"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !canSubmit}
-              className="rounded-lg bg-fp-accent px-4 py-2 text-sm font-semibold text-[#0d0d14] disabled:opacity-50"
+              className="rounded-lg bg-fp-accent px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
             >
               {loading ? 'Saving…' : 'Save'}
             </button>

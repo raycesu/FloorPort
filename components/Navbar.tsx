@@ -48,18 +48,18 @@ export function Navbar({ email }: { email?: string | null }) {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/10 bg-fp-bg/90 backdrop-blur-md">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 md:h-[4.5rem]">
+    <header className="sticky top-0 z-40 border-b border-fp-border bg-fp-nav">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 md:h-20">
         <Link
           href="/dashboard"
           className="flex h-full shrink-0 items-center transition-opacity hover:opacity-90"
         >
           <Image
-            src="/floorport-logo.png"
+            src="/floorport-logo-v2.png"
             alt="FloorPort"
-            width={220}
-            height={220}
-            className="h-9 w-auto md:h-11"
+            width={420}
+            height={110}
+            className="h-[3.175rem] w-auto md:h-16"
             priority
           />
         </Link>
@@ -70,8 +70,8 @@ export function Navbar({ email }: { email?: string | null }) {
               href={href}
               className={`rounded-lg px-4 py-2 text-base font-medium transition ${
                 pathname === href
-                  ? 'bg-white/10 text-white'
-                  : 'text-zinc-400 hover:bg-white/5 hover:text-zinc-200'
+                  ? 'bg-fp-crypto-bg text-fp-crypto-text'
+                  : 'text-fp-muted hover:bg-fp-page hover:text-fp-text'
               }`}
             >
               {label}
@@ -79,15 +79,15 @@ export function Navbar({ email }: { email?: string | null }) {
           ))}
         </nav>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-white/15 p-1">
+          <div className="flex rounded-lg border border-fp-border bg-fp-surface p-1">
             <button
               type="button"
               disabled={currencyBusy}
               onClick={() => void setCurrency('USD')}
-              className={`rounded-md px-4 py-2.5 text-base font-semibold ${
+              className={`rounded-md px-4 py-2.5 text-base font-medium ${
                 currency === 'USD'
-                  ? 'bg-white/15 text-white'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  ? 'bg-fp-page text-fp-text'
+                  : 'text-fp-muted hover:text-fp-text'
               }`}
             >
               USD
@@ -96,17 +96,17 @@ export function Navbar({ email }: { email?: string | null }) {
               type="button"
               disabled={currencyBusy}
               onClick={() => void setCurrency('CAD')}
-              className={`rounded-md px-4 py-2.5 text-base font-semibold ${
+              className={`rounded-md px-4 py-2.5 text-base font-medium ${
                 currency === 'CAD'
-                  ? 'bg-white/15 text-white'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  ? 'bg-fp-page text-fp-text'
+                  : 'text-fp-muted hover:text-fp-text'
               }`}
             >
               CAD
             </button>
           </div>
           <span
-            className="hidden max-w-[160px] truncate text-xs text-zinc-500 sm:inline"
+            className="hidden max-w-[160px] truncate text-xs text-fp-muted sm:inline"
             title={email ?? ''}
           >
             {email}
@@ -115,19 +115,19 @@ export function Navbar({ email }: { email?: string | null }) {
             type="button"
             onClick={() => void signOut()}
             disabled={busy}
-            className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-zinc-300 transition hover:bg-white/5 disabled:opacity-50"
+            className="rounded-lg border border-fp-border px-3 py-1.5 text-sm text-fp-muted transition hover:bg-fp-page hover:text-fp-text disabled:opacity-50"
           >
             {busy ? '…' : 'Log out'}
           </button>
         </div>
       </div>
-      <nav className="flex min-h-12 gap-1 overflow-x-auto border-t border-white/5 px-4 py-2 md:hidden">
+      <nav className="flex min-h-12 gap-1 overflow-x-auto border-t border-fp-border px-4 py-2 md:hidden">
         {links.map(({ href, label }) => (
           <Link
             key={href}
             href={href}
             className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${
-              pathname === href ? 'bg-white/10 text-zinc-400' : 'text-zinc-400'
+              pathname === href ? 'bg-fp-crypto-bg text-fp-crypto-text' : 'text-fp-muted'
             }`}
           >
             {label}
