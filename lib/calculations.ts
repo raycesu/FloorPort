@@ -61,6 +61,48 @@ export function enrichHoldingsWithPrices(
   })
 }
 
+/**
+ * Merge holdings that represent the same asset (e.g. same symbol across wallets).
+ * Used for portfolio-level views like allocation and combined holdings tables.
+ */
+export function combineHoldingsByAsset(holdings: Holding[]): Holding[] {
+  const grouped = new Map<string, Holding[]>()
+  for (const h of holdings) {
+    const keyBase = h.coingecko_id?.trim() ? h.coingecko_id.trim().toLowerCase() : h.symbol.trim().toUpperCase()
+    const key = `${h.asset_type}:${keyBase}`
+    const rows = grouped.get(key)
+    if (rows) rows.push(h)
+    else grouped.set(key, [h])
+  }
+
+  return Array.from(grouped.entries()).map(([key, rows]) => {
+    const sample = rows[0]
+    const totalQuantity = rows.reduce((sum, r) => sum + r.quantity, 0)
+    const totalCost = rows.reduce((sum, r) => sum + r.quantity * r.avg_buy_price, 0)
+    const weightedAvgBuy = totalQuantity > 0 ? totalCost / totalQuantity : 0
+    const currentPrice = rows.find((r) => r.current_price != null)?.current_price
+
+    const combined: Holding = {
+      ...sample,
+      id: `combined:${key}`,
+      wallet_id: 'combined',
+      quantity: totalQuantity,
+      avg_buy_price: sample.asset_type === 'cash' ? sample.avg_buy_price : weightedAvgBuy,
+      current_price: currentPrice,
+      current_value: undefined,
+      pnl: undefined,
+      pnl_percent: undefined,
+    }
+    const { value, pnl, pnl_percent } = calcHoldingPnL(combined)
+    return {
+      ...combined,
+      current_value: value,
+      pnl,
+      pnl_percent,
+    }
+  })
+}
+
 /** Sum live position value per wallet (USD; use display currency on the client). */
 export function calcWalletValues(holdings: Holding[]): Record<string, number> {
   const byWallet: Record<string, number> = {}

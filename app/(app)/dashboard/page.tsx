@@ -3,6 +3,7 @@ import { DashboardHoldings } from '@/components/DashboardHoldings'
 import { PerformanceBars } from '@/components/PerformanceBars'
 import { PortfolioSummary } from '@/components/PortfolioSummary'
 import {
+  combineHoldingsByAsset,
   calcPortfolioHistorySeries24h,
   calcPortfolioSummary,
   enrichHoldingsWithPrices,
@@ -34,6 +35,7 @@ export default async function DashboardPage() {
     getLivePriceHistory24hByHoldingId(keys, 15),
   ])
   const enriched = enrichHoldingsWithPrices(holdings, prices)
+  const combined = combineHoldingsByAsset(enriched)
   const summary = calcPortfolioSummary(enriched)
   const performanceSeries = calcPortfolioHistorySeries24h(enriched, historyByHoldingId)
   const defaultWalletId = walletRows?.[0]?.id ? String(walletRows[0].id) : ''
@@ -43,10 +45,10 @@ export default async function DashboardPage() {
       <h1 className="text-2xl font-semibold text-fp-text">Dashboard</h1>
       <PortfolioSummary summary={summary} />
       <div className="grid gap-6 lg:grid-cols-2">
-        <AllocationChart holdings={enriched} />
+        <AllocationChart holdings={combined} />
         <PerformanceBars series={performanceSeries} />
       </div>
-      <DashboardHoldings initialHoldings={enriched} defaultWalletId={defaultWalletId} />
+      <DashboardHoldings initialHoldings={combined} defaultWalletId={defaultWalletId} />
     </div>
   )
 }
