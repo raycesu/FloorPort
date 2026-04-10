@@ -1,0 +1,16 @@
+@import 'tailwindcss';
+
+@theme inline {
+  --color-fp-bg: #0d0d14;
+  --color-fp-surface: rgba(255, 255, 255, 0.04);
+  --color-fp-accent: #a89cf7;
+  --color-fp-positive: #4ade80;
+  --color-fp-negative: #f87171;
+  --color-fp-crypto: #5dcaa5;
+  --color-fp-stock: #378add;
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  @apply bg-fp-bg text-zinc-100 antialiased;
+}
