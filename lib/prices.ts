@@ -125,6 +125,11 @@ export type PriceKey = {
   coingecko_id?: string | null
 }
 
+export type TimePricePoint = {
+  timestamp: number
+  price: number
+}
+
 /** USD price per unit of the holding, keyed by holding id */
 export async function getLivePrices(items: PriceKey[]): Promise<Record<string, number>> {
   const fiatRates = await getFiatUsdRates()
@@ -220,6 +225,165 @@ export async function getLiveChangePercent(items: PriceKey[]): Promise<Record<st
   ;(Object.entries(cgQuotes) as [string, CryptoQuote][]).forEach(([sym, q]) => {
     if (q.change_24h != null && !Number.isNaN(q.change_24h)) out[sym.toUpperCase()] = q.change_24h
   })
+  return out
+}
+
+function normalizeToBucketPoints(
+  points: TimePricePoint[],
+  bucketTimestamps: number[]
+): TimePricePoint[] {
+  if (points.length === 0 || bucketTimestamps.length === 0) return []
+  const sorted = [...points]
+    .filter((p) => Number.isFinite(p.timestamp) && Number.isFinite(p.price) && p.price > 0)
+    .sort((a, b) => a.timestamp - b.timestamp)
+  if (sorted.length === 0) return []
+
+  const out: TimePricePoint[] = []
+  let idx = 0
+  let lastPrice: number | null = null
+  for (const ts of bucketTimestamps) {
+    while (idx < sorted.length && sorted[idx].timestamp <= ts) {
+      lastPrice = sorted[idx].price
+      idx += 1
+    }
+    const price = lastPrice ?? sorted[0].price
+    out.push({ timestamp: ts, price })
+  }
+  return out
+}
+
+function makeBucketTimestamps(intervalMinutes: number): number[] {
+  const now = Date.now()
+  const intervalMs = intervalMinutes * 60 * 1000
+  const alignedNow = Math.floor(now / intervalMs) * intervalMs
+  const start = alignedNow - 24 * 60 * 60 * 1000
+  const out: number[] = []
+  for (let t = start; t <= alignedNow; t += intervalMs) out.push(t)
+  return out
+}
+
+async function getCryptoHistory24hByCoingeckoIds(
+  ids: string[],
+  bucketTimestamps: number[]
+): Promise<Record<string, TimePricePoint[]>> {
+  const unique = [...new Set(ids.filter(Boolean))]
+  if (unique.length === 0) return {}
+  const pairs = await Promise.all(
+    unique.map(async (id) => {
+      try {
+        const res = await fetch(
+          `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=1`,
+          { next: { revalidate: 60 } }
+        )
+        if (!res.ok) return [id, []] as const
+        const data = (await res.json()) as { prices?: [number, number][] }
+        const points: TimePricePoint[] =
+          data.prices?.map(([timestamp, price]) => ({ timestamp, price })) ?? []
+        return [id, normalizeToBucketPoints(points, bucketTimestamps)] as const
+      } catch (e) {
+        console.error(`Failed 24h history for ${id}`, e)
+        return [id, []] as const
+      }
+    })
+  )
+  return Object.fromEntries(pairs)
+}
+
+async function getStockHistory24h(
+  symbols: string[],
+  bucketTimestamps: number[]
+): Promise<Record<string, TimePricePoint[]>> {
+  const unique = [...new Set(symbols.map((s) => s.toUpperCase()).filter(Boolean))]
+  if (unique.length === 0) return {}
+  const pairs = await Promise.all(
+    unique.map(async (symbol) => {
+      try {
+        const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=15m&range=1d`
+        const res = await fetch(url, {
+          next: { revalidate: 60 },
+          headers: { 'User-Agent': 'FloorPort/1.0' },
+        })
+        if (!res.ok) return [symbol, []] as const
+        const data = (await res.json()) as {
+          chart?: {
+            result?: {
+              timestamp?: number[]
+              indicators?: { quote?: { close?: (number | null)[] }[] }
+            }[]
+          }
+        }
+        const result = data.chart?.result?.[0]
+        const ts = result?.timestamp ?? []
+        const closes = result?.indicators?.quote?.[0]?.close ?? []
+        const points: TimePricePoint[] = []
+        for (let i = 0; i < ts.length; i += 1) {
+          const price = closes[i]
+          if (price != null && !Number.isNaN(price) && price > 0) {
+            points.push({ timestamp: ts[i] * 1000, price })
+          }
+        }
+        return [symbol, normalizeToBucketPoints(points, bucketTimestamps)] as const
+      } catch (e) {
+        console.error(`Failed stock 24h history for ${symbol}`, e)
+        return [symbol, []] as const
+      }
+    })
+  )
+  return Object.fromEntries(pairs)
+}
+
+/** 24h normalized price series per holding id, bucketed at intervalMinutes. */
+export async function getLivePriceHistory24hByHoldingId(
+  items: PriceKey[],
+  intervalMinutes = 15
+): Promise<Record<string, TimePricePoint[]>> {
+  const buckets = makeBucketTimestamps(intervalMinutes)
+  const cryptoByCoingecko = new Map<string, string[]>()
+  const legacyCryptoSymbols: string[] = []
+  const stockSymbols: string[] = []
+
+  for (const h of items) {
+    if (h.asset_type === 'cash') continue
+    if (h.asset_type === 'crypto') {
+      const cg = h.coingecko_id?.trim()
+      if (cg) {
+        const list = cryptoByCoingecko.get(cg) ?? []
+        list.push(h.id)
+        cryptoByCoingecko.set(cg, list)
+      } else {
+        legacyCryptoSymbols.push(h.symbol.toUpperCase())
+      }
+      continue
+    }
+    if (h.asset_type === 'stock') stockSymbols.push(h.symbol.toUpperCase())
+  }
+
+  const [cgSeries, legacyCryptoSeries, stockSeries] = await Promise.all([
+    getCryptoHistory24hByCoingeckoIds([...cryptoByCoingecko.keys()], buckets),
+    getCryptoHistory24hByCoingeckoIds(
+      [...new Set(legacyCryptoSymbols)]
+        .map((symbol) => getCoinGeckoId(symbol))
+        .filter((id): id is string => Boolean(id)),
+      buckets
+    ),
+    getStockHistory24h(stockSymbols, buckets),
+  ])
+
+  const out: Record<string, TimePricePoint[]> = {}
+  for (const h of items) {
+    if (h.asset_type === 'cash') continue
+    if (h.asset_type === 'stock') {
+      out[h.id] = stockSeries[h.symbol.toUpperCase()] ?? []
+      continue
+    }
+    const cg = h.coingecko_id?.trim()
+    if (cg) {
+      out[h.id] = cgSeries[cg] ?? []
+      continue
+    }
+    const legacyId = getCoinGeckoId(h.symbol)
+    out[h.id] = legacyId ? legacyCryptoSeries[legacyId] ?? [] : []
+  }
   return out
 }
 

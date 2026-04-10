@@ -52,14 +52,14 @@ export function Navbar({ email }: { email?: string | null }) {
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 md:h-20">
         <Link
           href="/dashboard"
-          className="flex h-full shrink-0 items-center transition-opacity hover:opacity-90"
+          className="flex shrink-0 items-center self-center transition-opacity hover:opacity-90"
         >
           <Image
             src="/floorport-logo-v2.png"
             alt="FloorPort"
-            width={420}
-            height={110}
-            className="h-[3.175rem] w-auto md:h-16"
+            width={240}
+            height={63}
+            className="h-10 w-auto md:h-12 max-h-full"
             priority
           />
         </Link>

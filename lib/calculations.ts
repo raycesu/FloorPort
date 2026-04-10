@@ -1,4 +1,5 @@
 import type { Holding, PortfolioSummary } from '@/types'
+import type { TimePricePoint } from '@/lib/prices'
 
 export function calcHoldingPnL(holding: Holding) {
   if (holding.asset_type === 'cash') {
@@ -68,4 +69,48 @@ export function calcWalletValues(holdings: Holding[]): Record<string, number> {
     byWallet[h.wallet_id] = (byWallet[h.wallet_id] ?? 0) + value
   }
   return byWallet
+}
+
+/**
+ * Build a portfolio value series from per-holding price history.
+ * Falls back to current_price when history is unavailable.
+ */
+export function calcPortfolioHistorySeries24h(
+  holdings: Holding[],
+  priceHistoryByHoldingId: Record<string, TimePricePoint[]>
+): { timestamp: number; value: number }[] {
+  const allTimestamps = new Set<number>()
+  Object.values(priceHistoryByHoldingId).forEach((series) => {
+    series.forEach((point) => allTimestamps.add(point.timestamp))
+  })
+  const timestamps = [...allTimestamps].sort((a, b) => a - b)
+  if (timestamps.length === 0) return []
+
+  const out = timestamps.map((timestamp) => ({ timestamp, value: 0 }))
+  for (const h of holdings) {
+    if (h.asset_type === 'cash') {
+      const cashValue = h.quantity * (h.current_price ?? 0)
+      out.forEach((p) => {
+        p.value += cashValue
+      })
+      continue
+    }
+
+    const series = priceHistoryByHoldingId[h.id] ?? []
+    if (series.length === 0) {
+      const fallbackValue = h.quantity * (h.current_price ?? 0)
+      out.forEach((p) => {
+        p.value += fallbackValue
+      })
+      continue
+    }
+
+    const byTimestamp = new Map<number, number>()
+    series.forEach((p) => byTimestamp.set(p.timestamp, p.price))
+    out.forEach((p) => {
+      const price = byTimestamp.get(p.timestamp)
+      if (price != null) p.value += h.quantity * price
+    })
+  }
+  return out
 }

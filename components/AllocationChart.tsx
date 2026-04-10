@@ -6,14 +6,11 @@ import { calcHoldingPnL } from '@/lib/calculations'
 import { contrastTextForBackground } from '@/lib/contrastText'
 import { formatMoney } from '@/lib/format'
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
   Cell,
+  Pie,
+  PieChart,
   ResponsiveContainer,
   Tooltip,
-  XAxis,
-  YAxis,
 } from 'recharts'
 
 const COLORS = ['#a89cf7', '#5dcaa5', '#378add', '#f472b6', '#fbbf24', '#38bdf8', '#a78bfa']
@@ -43,15 +40,7 @@ export function AllocationChart({ holdings }: { holdings: Holding[] }) {
       <h2 className="mb-4 text-sm font-semibold text-fp-text">Allocation</h2>
       <div className="h-[280px] w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} layout="vertical" margin={{ left: 8, right: 16 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e8e8e6" />
-            <XAxis type="number" tick={{ fill: '#6b6b6b', fontSize: 11 }} tickFormatter={(v) => `${v.toFixed(0)}%`} domain={[0, 'dataMax']} />
-            <YAxis
-              type="category"
-              dataKey="name"
-              width={48}
-              tick={{ fill: '#6b6b6b', fontSize: 11 }}
-            />
+          <PieChart>
             <Tooltip
               cursor={false}
               content={({ active, payload }) => {
@@ -75,12 +64,23 @@ export function AllocationChart({ holdings }: { holdings: Holding[] }) {
                 )
               }}
             />
-            <Bar dataKey="pct" radius={[0, 4, 4, 0]} name="% of portfolio">
+            <Pie
+              data={data}
+              dataKey="value"
+              nameKey="name"
+              cx="50%"
+              cy="52%"
+              innerRadius="45%"
+              outerRadius="88%"
+              paddingAngle={2}
+              stroke="none"
+              name="% of portfolio"
+            >
               {data.map((_, i) => (
                 <Cell key={i} fill={COLORS[i % COLORS.length]} />
               ))}
-            </Bar>
-          </BarChart>
+            </Pie>
+          </PieChart>
         </ResponsiveContainer>
       </div>
     </div>

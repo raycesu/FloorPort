@@ -2,9 +2,13 @@ import { AllocationChart } from '@/components/AllocationChart'
 import { DashboardHoldings } from '@/components/DashboardHoldings'
 import { PerformanceBars } from '@/components/PerformanceBars'
 import { PortfolioSummary } from '@/components/PortfolioSummary'
-import { calcPortfolioSummary, enrichHoldingsWithPrices } from '@/lib/calculations'
+import {
+  calcPortfolioHistorySeries24h,
+  calcPortfolioSummary,
+  enrichHoldingsWithPrices,
+} from '@/lib/calculations'
 import { mapRowToHolding } from '@/lib/mappers'
-import { getLiveChangePercent, getLivePrices } from '@/lib/prices'
+import { getLivePriceHistory24hByHoldingId, getLivePrices } from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
 
 export default async function DashboardPage() {
@@ -25,9 +29,13 @@ export default async function DashboardPage() {
     asset_type: h.asset_type,
     coingecko_id: h.coingecko_id,
   }))
-  const [prices, changes] = await Promise.all([getLivePrices(keys), getLiveChangePercent(keys)])
+  const [prices, historyByHoldingId] = await Promise.all([
+    getLivePrices(keys),
+    getLivePriceHistory24hByHoldingId(keys, 15),
+  ])
   const enriched = enrichHoldingsWithPrices(holdings, prices)
   const summary = calcPortfolioSummary(enriched)
+  const performanceSeries = calcPortfolioHistorySeries24h(enriched, historyByHoldingId)
   const defaultWalletId = walletRows?.[0]?.id ? String(walletRows[0].id) : ''
 
   return (
@@ -36,7 +44,7 @@ export default async function DashboardPage() {
       <PortfolioSummary summary={summary} />
       <div className="grid gap-6 lg:grid-cols-2">
         <AllocationChart holdings={enriched} />
-        <PerformanceBars holdings={enriched} changeBySymbol={changes} />
+        <PerformanceBars series={performanceSeries} />
       </div>
       <DashboardHoldings initialHoldings={enriched} defaultWalletId={defaultWalletId} />
     </div>
