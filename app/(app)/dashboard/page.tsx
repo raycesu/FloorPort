@@ -12,6 +12,22 @@ import { mapRowToHolding } from '@/lib/mappers'
 import { getLivePriceHistory24hByHoldingId, getLivePrices } from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
 
+function getGreeting() {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
+function formatTodayDate() {
+  return new Date().toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient()
   const {
@@ -40,14 +56,31 @@ export default async function DashboardPage() {
   const performanceSeries = calcPortfolioHistorySeries24h(enriched, historyByHoldingId)
   const defaultWalletId = walletRows?.[0]?.id ? String(walletRows[0].id) : ''
 
+  const firstName = user?.email?.split('@')[0] ?? 'there'
+  const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1)
+
   return (
-    <div className="space-y-8">
-      <h1 className="text-2xl font-semibold text-fp-text">Dashboard</h1>
+    <div className="space-y-10">
+      {/* Greeting */}
+      <div>
+        <h1
+          className="font-semibold"
+          style={{ fontSize: '22px', color: '#e4e4e7' }}
+        >
+          {getGreeting()}, {displayName}
+        </h1>
+        <p className="mt-1 text-sm" style={{ color: '#71717a' }}>
+          {formatTodayDate()}
+        </p>
+      </div>
+
       <PortfolioSummary summary={summary} />
+
       <div className="grid gap-6 lg:grid-cols-2">
         <AllocationChart holdings={combined} />
         <PerformanceBars series={performanceSeries} />
       </div>
+
       <DashboardHoldings initialHoldings={combined} defaultWalletId={defaultWalletId} />
     </div>
   )
