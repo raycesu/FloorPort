@@ -27,7 +27,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="min-h-screen">
       <CurrencyProvider currency={currency} usdToCad={usdToCad}>
         <Navbar email={user.email} />
-        <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
+        <main className="mx-auto max-w-[1280px] px-8 py-10">{children}</main>
       </CurrencyProvider>
     </div>
   )

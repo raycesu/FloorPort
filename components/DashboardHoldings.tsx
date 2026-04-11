@@ -19,12 +19,21 @@ export function DashboardHoldings({
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-fp-text">Holdings</h2>
+        <h2 className="font-semibold" style={{ fontSize: '16px', color: '#e4e4e7' }}>
+          Holdings
+        </h2>
         <button
           type="button"
           onClick={() => setOpen(true)}
           disabled={!defaultWalletId}
-          className="rounded-lg bg-fp-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
+          className="rounded-lg px-[18px] py-2 text-sm font-semibold text-white transition-colors duration-150 disabled:opacity-40"
+          style={{ background: '#7c6fd4' }}
+          onMouseEnter={(e) => {
+            ;(e.currentTarget as HTMLButtonElement).style.background = '#8b7ed8'
+          }}
+          onMouseLeave={(e) => {
+            ;(e.currentTarget as HTMLButtonElement).style.background = '#7c6fd4'
+          }}
         >
           Add holding
         </button>

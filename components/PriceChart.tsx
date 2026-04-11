@@ -63,9 +63,11 @@ export function PriceChart({
           <YAxis domain={flat ? [min - 1, max + 1] : ['auto', 'auto']} hide />
           <Tooltip
             contentStyle={{
-              background: '#ffffff',
-              border: '1px solid #e8e8e6',
+              background: '#1c1c1f',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: 8,
               fontSize: 11,
+              color: '#e4e4e7',
             }}
             formatter={(v: number) => [v.toFixed(2), '']}
           />

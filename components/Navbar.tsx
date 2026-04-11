@@ -48,91 +48,128 @@ export function Navbar({ email }: { email?: string | null }) {
   }
 
   return (
-    <header className="sticky top-0 z-40 border-b border-fp-border bg-fp-nav">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 md:h-20">
+    <header
+      className="sticky top-0 z-40 bg-fp-nav"
+      style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <div className="mx-auto flex h-16 max-w-[1280px] items-center px-8 gap-8">
+        {/* Logo */}
         <Link
           href="/dashboard"
-          className="flex shrink-0 items-center self-center transition-opacity hover:opacity-90"
+          className="flex shrink-0 items-center transition-opacity hover:opacity-85"
         >
           <Image
             src="/floorport-logo-v2.png"
             alt="FloorPort"
             width={707}
             height={353}
-            className="h-14 w-auto md:h-16 max-h-full"
+            className="h-10 w-auto max-h-full"
             priority
           />
         </Link>
-        <nav className="hidden items-center gap-1 md:flex">
-          {links.map(({ href, label }) => (
-            <Link
-              key={href}
-              href={href}
-              className={`rounded-lg px-4 py-2 text-base font-medium transition ${
-                pathname === href
-                  ? 'bg-fp-crypto-bg text-fp-crypto-text'
-                  : 'text-fp-muted hover:bg-fp-page hover:text-fp-text'
-              }`}
-            >
-              {label}
-            </Link>
-          ))}
+
+        {/* Desktop nav — centered */}
+        <nav className="hidden flex-1 items-center justify-center gap-8 md:flex">
+          {links.map(({ href, label }) => {
+            const active = pathname === href
+            return (
+              <Link
+                key={href}
+                href={href}
+                className="relative pb-0.5 text-sm font-medium transition-colors duration-150"
+                style={{
+                  color: active ? '#7c6fd4' : '#71717a',
+                  borderBottom: active ? '2px solid #7c6fd4' : '2px solid transparent',
+                }}
+                onMouseEnter={(e) => {
+                  if (!active) (e.currentTarget as HTMLAnchorElement).style.color = '#e4e4e7'
+                }}
+                onMouseLeave={(e) => {
+                  if (!active) (e.currentTarget as HTMLAnchorElement).style.color = '#71717a'
+                }}
+              >
+                {label}
+              </Link>
+            )
+          })}
         </nav>
-        <div className="flex items-center gap-2">
-          <div className="flex rounded-lg border border-fp-border bg-fp-surface p-1">
-            <button
-              type="button"
-              disabled={currencyBusy}
-              onClick={() => void setCurrency('USD')}
-              className={`rounded-md px-4 py-2.5 text-base font-medium ${
-                currency === 'USD'
-                  ? 'bg-fp-page text-fp-text'
-                  : 'text-fp-muted hover:text-fp-text'
-              }`}
-            >
-              USD
-            </button>
-            <button
-              type="button"
-              disabled={currencyBusy}
-              onClick={() => void setCurrency('CAD')}
-              className={`rounded-md px-4 py-2.5 text-base font-medium ${
-                currency === 'CAD'
-                  ? 'bg-fp-page text-fp-text'
-                  : 'text-fp-muted hover:text-fp-text'
-              }`}
-            >
-              CAD
-            </button>
+
+        {/* Right side */}
+        <div className="flex items-center gap-4 ml-auto md:ml-0">
+          {/* Segmented currency toggle */}
+          <div
+            className="flex items-center rounded-full p-0.5 relative"
+            style={{
+              background: '#18181b',
+              border: '1px solid rgba(255,255,255,0.08)',
+            }}
+          >
+            {(['USD', 'CAD'] as DisplayCurrency[]).map((c) => (
+              <button
+                key={c}
+                type="button"
+                disabled={currencyBusy}
+                onClick={() => void setCurrency(c)}
+                className="relative z-10 rounded-full px-3.5 py-1.5 text-xs font-semibold transition-colors duration-150 disabled:opacity-60"
+                style={{
+                  background: currency === c ? '#7c6fd4' : 'transparent',
+                  color: currency === c ? '#ffffff' : '#71717a',
+                }}
+              >
+                {c}
+              </button>
+            ))}
           </div>
+
+          {/* Email */}
           <span
-            className="hidden max-w-[160px] truncate text-xs text-fp-muted sm:inline"
+            className="hidden max-w-[160px] truncate sm:inline"
+            style={{ color: '#52525b', fontSize: '13px' }}
             title={email ?? ''}
           >
             {email}
           </span>
+
+          {/* Log out */}
           <button
             type="button"
             onClick={() => void signOut()}
             disabled={busy}
-            className="rounded-lg border border-fp-border px-3 py-1.5 text-sm text-fp-muted transition hover:bg-fp-page hover:text-fp-text disabled:opacity-50"
+            className="text-sm font-medium transition-colors duration-150 disabled:opacity-40"
+            style={{ color: '#52525b', background: 'none', border: 'none' }}
+            onMouseEnter={(e) => {
+              ;(e.currentTarget as HTMLButtonElement).style.color = '#e4e4e7'
+            }}
+            onMouseLeave={(e) => {
+              ;(e.currentTarget as HTMLButtonElement).style.color = '#52525b'
+            }}
           >
             {busy ? '…' : 'Log out'}
           </button>
         </div>
       </div>
-      <nav className="flex min-h-12 gap-1 overflow-x-auto border-t border-fp-border px-4 py-2 md:hidden">
-        {links.map(({ href, label }) => (
-          <Link
-            key={href}
-            href={href}
-            className={`shrink-0 rounded-lg px-3 py-2 text-sm font-medium ${
-              pathname === href ? 'bg-fp-crypto-bg text-fp-crypto-text' : 'text-fp-muted'
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
+
+      {/* Mobile nav */}
+      <nav
+        className="flex min-h-11 gap-6 overflow-x-auto px-8 py-2 md:hidden"
+        style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+      >
+        {links.map(({ href, label }) => {
+          const active = pathname === href
+          return (
+            <Link
+              key={href}
+              href={href}
+              className="shrink-0 pb-0.5 text-sm font-medium"
+              style={{
+                color: active ? '#7c6fd4' : '#71717a',
+                borderBottom: active ? '2px solid #7c6fd4' : '2px solid transparent',
+              }}
+            >
+              {label}
+            </Link>
+          )
+        })}
       </nav>
     </header>
   )
