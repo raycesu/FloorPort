@@ -57,9 +57,9 @@ export function Navbar({ email }: { email?: string | null }) {
           <Image
             src="/floorport-logo-v2.png"
             alt="FloorPort"
-            width={240}
-            height={63}
-            className="h-10 w-auto md:h-12 max-h-full"
+            width={707}
+            height={353}
+            className="h-14 w-auto md:h-16 max-h-full"
             priority
           />
         </Link>

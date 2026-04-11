@@ -21,9 +21,9 @@ export default async function LoginPage() {
               <Image
                 src="/floorport-logo-v2.png"
                 alt="FloorPort logo"
-                width={110}
-                height={29}
-                className="h-auto w-full max-w-[110px]"
+                width={707}
+                height={353}
+                className="h-auto w-full max-w-[220px]"
                 priority
               />
               <p className="mt-3 max-w-[280px] text-center text-[15px] leading-[1.6] text-[rgba(255,255,255,0.55)]">
