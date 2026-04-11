@@ -52,7 +52,7 @@ export default async function LoginPage() {
                 className="h-auto w-full max-w-[200px] md:max-w-[220px]"
                 priority
               />
-              <h1 className="mt-8 max-w-[20ch] text-balance text-[40px] font-bold leading-[1.1] tracking-tight text-white md:mt-10 md:text-[52px]">
+              <h1 className="mt-5 max-w-[20ch] text-balance text-[40px] font-bold leading-[1.1] tracking-tight text-white md:mt-6 md:text-[52px]">
                 Your portfolio, unified.
               </h1>
               <p className="mt-4 max-w-[320px] text-[15px] font-medium leading-relaxed text-[#71717a]">

@@ -113,35 +113,80 @@ export function HoldingsPageClient({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-fp-text">Holdings</h1>
+        <h1 className="font-bold text-white" style={{ fontSize: 18 }}>
+          Holdings
+        </h1>
         <button
           type="button"
           onClick={() => setAddOpen(true)}
           disabled={!initialWalletId}
-          className="rounded-lg bg-fp-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
+          className="rounded-lg font-semibold text-white transition-all duration-150 active:scale-[0.97] disabled:opacity-40"
+          style={{
+            background: '#7c6fd4',
+            padding: '9px 20px',
+            fontSize: 14,
+          }}
+          onMouseEnter={(e) => {
+            if (!e.currentTarget.disabled) {
+              ;(e.currentTarget as HTMLButtonElement).style.background = '#8b7ed8'
+            }
+          }}
+          onMouseLeave={(e) => {
+            ;(e.currentTarget as HTMLButtonElement).style.background = '#7c6fd4'
+          }}
         >
           Add holding
         </button>
       </div>
 
-      <div className="rounded-xl border border-fp-border bg-fp-surface p-5">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[220px] flex-1">
-            <label className="text-xs text-fp-muted">Wallet</label>
-            <select
-              className="mt-1 h-9 w-full rounded-lg border border-fp-border bg-fp-surface px-3 text-sm"
-              value={initialWalletId}
-              onChange={(e) => selectWallet(e.target.value)}
-            >
-              {wallets.map((w) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
-            </select>
-          </div>
+      <div
+        className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between"
+        style={{
+          background: '#18181b',
+          border: '1px solid rgba(255,255,255,0.07)',
+          borderRadius: 14,
+          padding: '20px 24px',
+        }}
+      >
+        <div className="min-w-0 flex-1 space-y-3 sm:max-w-md">
+          <label
+            className="block font-medium uppercase"
+            style={{ fontSize: 11, letterSpacing: '0.07em', color: '#52525b' }}
+          >
+            Wallet
+          </label>
+          <select
+            className="w-full border font-medium outline-none transition-colors focus:ring-2 focus:ring-[#7c6fd4]/30"
+            style={{
+              background: '#0d0d0f',
+              border: '1px solid #2e2e32',
+              borderRadius: 8,
+              color: '#e4e4e7',
+              padding: '8px 12px',
+              fontSize: 14,
+            }}
+            value={initialWalletId}
+            onChange={(e) => selectWallet(e.target.value)}
+          >
+            {wallets.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.name}
+              </option>
+            ))}
+          </select>
+          {initialWalletId ? (
+            <p className="text-[13px] tabular-nums" style={{ color: '#71717a' }}>
+              Wallet value:{' '}
+              <span style={{ color: '#e4e4e7', fontWeight: 500 }}>
+                {formatMoney(walletValues[initialWalletId] ?? 0, currency, usdToCad)}
+              </span>
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-4 sm:items-end">
           {currentWallet ? (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-3 sm:justify-end">
               <button
                 type="button"
                 disabled={busy}
@@ -149,7 +194,14 @@ export function HoldingsPageClient({
                   setRenameId(currentWallet.id)
                   setRenameName(currentWallet.name)
                 }}
-                className="rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-medium text-fp-muted hover:border-fp-border hover:text-fp-text"
+                className="border-0 bg-transparent p-0 text-[13px] font-medium transition-colors duration-150 disabled:opacity-50"
+                style={{ color: '#7c6fd4' }}
+                onMouseEnter={(e) => {
+                  if (!e.currentTarget.disabled) (e.currentTarget as HTMLButtonElement).style.color = '#9b8ee0'
+                }}
+                onMouseLeave={(e) => {
+                  ;(e.currentTarget as HTMLButtonElement).style.color = '#7c6fd4'
+                }}
               >
                 Rename
               </button>
@@ -157,39 +209,59 @@ export function HoldingsPageClient({
                 type="button"
                 disabled={busy}
                 onClick={() => void deleteWallet(currentWallet.id)}
-                className="rounded-lg border border-transparent bg-transparent px-3 py-2 text-xs font-medium text-fp-negative hover:border-fp-negative"
+                className="border-0 bg-transparent p-0 text-[13px] font-medium transition-colors duration-150 disabled:opacity-50"
+                style={{ color: '#f87171' }}
+                onMouseEnter={(e) => {
+                  if (!e.currentTarget.disabled) (e.currentTarget as HTMLButtonElement).style.color = '#fca5a5'
+                }}
+                onMouseLeave={(e) => {
+                  ;(e.currentTarget as HTMLButtonElement).style.color = '#f87171'
+                }}
               >
                 Delete wallet
               </button>
             </div>
           ) : null}
-          <form onSubmit={createWallet} className="ml-auto flex flex-wrap items-end gap-2">
-            <div>
-              <label className="text-xs text-fp-muted">New wallet name</label>
+          <form
+            onSubmit={createWallet}
+            className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:flex-wrap sm:items-end sm:justify-end"
+          >
+            <div className="w-full min-w-[200px] sm:w-auto">
+              <label
+                className="mb-1.5 block font-medium uppercase"
+                style={{ fontSize: 11, letterSpacing: '0.07em', color: '#52525b' }}
+              >
+                New wallet name
+              </label>
               <input
                 value={newWalletName}
                 onChange={(e) => setNewWalletName(e.target.value)}
-                placeholder="Name"
-                className="mt-1 h-9 w-44 rounded-lg border border-fp-input-border bg-fp-surface px-3 text-sm"
+                placeholder="New wallet name"
+                className="w-full border outline-none transition-colors focus:ring-2 focus:ring-[#7c6fd4]/30 sm:w-52"
+                style={{
+                  background: '#0d0d0f',
+                  border: '1px solid #2e2e32',
+                  borderRadius: 8,
+                  color: '#e4e4e7',
+                  padding: '8px 12px',
+                  fontSize: 14,
+                }}
               />
             </div>
             <button
               type="submit"
               disabled={busy || !newWalletName.trim()}
-              className="h-9 rounded-lg bg-fp-accent px-4 text-sm font-medium text-white hover:opacity-90 disabled:opacity-40"
+              className="shrink-0 rounded-lg font-semibold text-white transition-opacity duration-150 disabled:opacity-40"
+              style={{
+                background: '#7c6fd4',
+                padding: '8px 16px',
+                fontSize: 14,
+              }}
             >
               Create
             </button>
           </form>
         </div>
-        {initialWalletId ? (
-          <p className="mt-2 text-[13px] tabular-nums text-fp-muted">
-            Wallet value:{' '}
-            <span className="font-medium text-fp-text">
-              {formatMoney(walletValues[initialWalletId] ?? 0, currency, usdToCad)}
-            </span>
-          </p>
-        ) : null}
       </div>
 
       {renameId ? (

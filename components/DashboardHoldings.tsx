@@ -19,17 +19,23 @@ export function DashboardHoldings({
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-semibold" style={{ fontSize: '16px', color: '#e4e4e7' }}>
+        <h2 className="font-bold text-white" style={{ fontSize: 18 }}>
           Holdings
         </h2>
         <button
           type="button"
           onClick={() => setOpen(true)}
           disabled={!defaultWalletId}
-          className="rounded-lg px-[18px] py-2 text-sm font-semibold text-white transition-colors duration-150 disabled:opacity-40"
-          style={{ background: '#7c6fd4' }}
+          className="rounded-lg font-semibold text-white transition-all duration-150 active:scale-[0.97] disabled:opacity-40"
+          style={{
+            background: '#7c6fd4',
+            padding: '9px 20px',
+            fontSize: 14,
+          }}
           onMouseEnter={(e) => {
-            ;(e.currentTarget as HTMLButtonElement).style.background = '#8b7ed8'
+            if (!e.currentTarget.disabled) {
+              ;(e.currentTarget as HTMLButtonElement).style.background = '#8b7ed8'
+            }
           }}
           onMouseLeave={(e) => {
             ;(e.currentTarget as HTMLButtonElement).style.background = '#7c6fd4'
