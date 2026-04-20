@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { searchStockSymbols } from '@/lib/prices'
 import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
@@ -24,33 +25,17 @@ export async function GET(request: NextRequest) {
 
   if (type === 'stock') {
     try {
-      const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=12&newsCount=0`
-      const res = await fetch(url, { next: { revalidate: 300 }, headers: { 'User-Agent': 'FloorPort/1.0' } })
-      if (res.ok) {
-        const data = (await res.json()) as {
-          quotes?: {
-            symbol?: string
-            shortname?: string
-            longname?: string
-            quoteType?: string
-          }[]
-        }
-        const quotes = data.quotes ?? []
-        for (const row of quotes) {
-          const sym = row.symbol
-          if (!sym || typeof sym !== 'string') continue
-          const qt = row.quoteType ?? ''
-          if (qt && qt !== 'EQUITY' && qt !== 'ETF') continue
-          const name = row.shortname ?? row.longname ?? sym
-          results.push({
-            symbol: sym.toUpperCase(),
-            name: typeof name === 'string' ? name : sym,
-            type: 'stock',
-          })
-        }
-      }
+      if (q.length < 2) return NextResponse.json({ results: [] })
+      const stocks = await searchStockSymbols(q, 12)
+      stocks.forEach((row) => {
+        results.push({
+          symbol: row.symbol,
+          name: row.name,
+          type: 'stock',
+        })
+      })
     } catch (e) {
-      console.error('Yahoo search failed', e)
+      console.error('Twelve Data search failed', e)
     }
   }
 

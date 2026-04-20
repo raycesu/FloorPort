@@ -16,7 +16,7 @@ A personal investment portfolio tracker built with Next.js and Supabase. Track y
 - [Next.js](https://nextjs.org/) (v16, App Router, Turbopack)
 - [Supabase](https://supabase.com/) — database, auth, and row-level security
 - [Recharts](https://recharts.org/) — portfolio charts and visualizations
-- [yahoo-finance2](https://github.com/gadicc/node-yahoo-finance2) — live price data
+- [Twelve Data](https://twelvedata.com/) — stock market data (quotes, search, time series)
 - [Tailwind CSS](https://tailwindcss.com/) (v4)
 - TypeScript
 
@@ -40,7 +40,17 @@ Create a `.env.local` file in the project root:
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+TWELVE_DATA_API_KEY=your_twelve_data_api_key
 ```
+
+### Twelve Data limits
+
+The app is designed for Twelve Data free-tier style limits:
+
+- 8 requests per minute
+- 800 requests per day
+
+To stay within limits, stock requests are batched, cached, and deduplicated. When Twelve Data returns a rate-limit response (`429`), stock data gracefully degrades instead of crashing pages.
 
 ### 3. Set up the database
 

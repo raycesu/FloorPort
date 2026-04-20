@@ -11,6 +11,236 @@ const COINGECKO_IDS: Record<string, string> = {
   LINK: 'chainlink',
 }
 
+const TWELVE_DATA_BASE_URL = 'https://api.twelvedata.com'
+const TWELVE_DATA_QUOTE_CACHE_TTL_MS = 60 * 1000
+const TWELVE_DATA_HISTORY_CACHE_TTL_MS = 3 * 60 * 1000
+
+type CacheEntry<T> = {
+  expiresAt: number
+  value: T
+}
+
+const twelveDataMemoryCache = new Map<string, CacheEntry<unknown>>()
+const twelveDataInFlight = new Map<string, Promise<unknown>>()
+
+type TwelveDataQuote = {
+  symbol?: string
+  close?: string
+  previous_close?: string
+  percent_change?: string
+  change_percent?: string
+}
+
+type TwelveDataTimeSeriesPoint = {
+  datetime?: string
+  close?: string
+}
+
+type TwelveDataTimeSeriesPayload = {
+  symbol?: string
+  values?: TwelveDataTimeSeriesPoint[]
+  status?: string
+  code?: number
+  message?: string
+}
+
+type TwelveDataSymbolSearchItem = {
+  symbol?: string
+  instrument_name?: string
+  name?: string
+  type?: string
+}
+
+function getTwelveDataApiKey(): string | null {
+  const key = process.env.TWELVE_DATA_API_KEY?.trim()
+  return key ? key : null
+}
+
+function parseMaybeNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value !== 'string') return null
+  const normalized = value.trim()
+  if (!normalized) return null
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function normalizeStockSymbols(symbols: string[]): string[] {
+  return [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()).filter(Boolean))]
+}
+
+function buildTwelveDataCacheKey(kind: string, params: Record<string, string>): string {
+  const serialized = Object.entries(params)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([k, v]) => `${k}=${v}`)
+    .join('&')
+  return `${kind}:${serialized}`
+}
+
+async function withTwelveDataCache<T>(
+  key: string,
+  ttlMs: number,
+  producer: () => Promise<T>
+): Promise<T> {
+  const now = Date.now()
+  const cached = twelveDataMemoryCache.get(key)
+  if (cached && cached.expiresAt > now) return cached.value as T
+
+  const active = twelveDataInFlight.get(key)
+  if (active) return active as Promise<T>
+
+  const next = producer()
+    .then((value) => {
+      twelveDataMemoryCache.set(key, { value, expiresAt: Date.now() + ttlMs })
+      return value
+    })
+    .finally(() => {
+      twelveDataInFlight.delete(key)
+    })
+
+  twelveDataInFlight.set(key, next as Promise<unknown>)
+  return next
+}
+
+function parseTwelveDataError(data: unknown): { code?: number; message?: string } | null {
+  if (!data || typeof data !== 'object') return null
+  const code = (data as { code?: unknown }).code
+  const message = (data as { message?: unknown }).message
+  return {
+    code: typeof code === 'number' ? code : undefined,
+    message: typeof message === 'string' ? message : undefined,
+  }
+}
+
+async function fetchTwelveDataJson<T>(
+  endpoint: string,
+  params: Record<string, string>,
+  revalidateSeconds: number
+): Promise<T | null> {
+  const apiKey = getTwelveDataApiKey()
+  if (!apiKey) {
+    console.warn('TWELVE_DATA_API_KEY is not set; stock prices will be unavailable')
+    return null
+  }
+  const search = new URLSearchParams({ ...params, apikey: apiKey })
+  const url = `${TWELVE_DATA_BASE_URL}${endpoint}?${search.toString()}`
+  try {
+    const res = await fetch(url, { next: { revalidate: revalidateSeconds } })
+    const data = (await res.json().catch(() => null)) as T | null
+    if (!res.ok) {
+      const err = parseTwelveDataError(data)
+      if (res.status === 429 || err?.code === 429) {
+        console.warn(`Twelve Data rate limit hit for ${endpoint}`)
+      } else {
+        console.warn(`Twelve Data request failed for ${endpoint}: ${res.status} ${res.statusText}`)
+      }
+      return null
+    }
+    const err = parseTwelveDataError(data)
+    if (err?.code) {
+      if (err.code === 429) console.warn(`Twelve Data rate limit hit for ${endpoint}`)
+      else console.warn(`Twelve Data error (${err.code}) for ${endpoint}: ${err.message ?? 'Unknown error'}`)
+      return null
+    }
+    return data
+  } catch (error) {
+    console.warn(`Twelve Data network failure for ${endpoint}`, error)
+    return null
+  }
+}
+
+function parseQuoteMap(data: unknown): Record<string, TwelveDataQuote> {
+  if (!data || typeof data !== 'object') return {}
+
+  if ('symbol' in data) {
+    const item = data as TwelveDataQuote
+    const symbol = item.symbol?.toUpperCase()
+    if (symbol) return { [symbol]: item }
+    return {}
+  }
+
+  const out: Record<string, TwelveDataQuote> = {}
+  for (const [symbol, value] of Object.entries(data)) {
+    if (!value || typeof value !== 'object') continue
+    out[symbol.toUpperCase()] = value as TwelveDataQuote
+  }
+  return out
+}
+
+function parseHistoryMap(data: unknown): Record<string, TwelveDataTimeSeriesPayload> {
+  if (!data || typeof data !== 'object') return {}
+  if ('values' in data || 'symbol' in data) {
+    const one = data as TwelveDataTimeSeriesPayload
+    const symbol = one.symbol?.toUpperCase()
+    return symbol ? { [symbol]: one } : {}
+  }
+
+  const out: Record<string, TwelveDataTimeSeriesPayload> = {}
+  for (const [symbol, value] of Object.entries(data)) {
+    if (!value || typeof value !== 'object') continue
+    out[symbol.toUpperCase()] = value as TwelveDataTimeSeriesPayload
+  }
+  return out
+}
+
+async function getStockQuotes(symbols: string[]): Promise<Record<string, TwelveDataQuote>> {
+  const normalized = normalizeStockSymbols(symbols)
+  if (normalized.length === 0) return {}
+  const key = buildTwelveDataCacheKey('quote', { symbol: normalized.join(',') })
+  return withTwelveDataCache(key, TWELVE_DATA_QUOTE_CACHE_TTL_MS, async () => {
+    const data = await fetchTwelveDataJson<unknown>('/quote', { symbol: normalized.join(',') }, 60)
+    return parseQuoteMap(data)
+  })
+}
+
+async function getStockTimeSeries(
+  symbols: string[],
+  interval: string,
+  outputsize: number,
+  revalidateSeconds: number
+): Promise<Record<string, TwelveDataTimeSeriesPayload>> {
+  const normalized = normalizeStockSymbols(symbols)
+  if (normalized.length === 0) return {}
+  const key = buildTwelveDataCacheKey('time_series', {
+    symbol: normalized.join(','),
+    interval,
+    outputsize: String(outputsize),
+  })
+  return withTwelveDataCache(key, TWELVE_DATA_HISTORY_CACHE_TTL_MS, async () => {
+    const data = await fetchTwelveDataJson<unknown>(
+      '/time_series',
+      {
+        symbol: normalized.join(','),
+        interval,
+        outputsize: String(outputsize),
+        timezone: 'UTC',
+        order: 'ASC',
+      },
+      revalidateSeconds
+    )
+    return parseHistoryMap(data)
+  })
+}
+
+export async function getStockCloses(
+  symbols: string[],
+  interval: string,
+  outputsize: number,
+  revalidateSeconds: number
+): Promise<Record<string, number[]>> {
+  const rows = await getStockTimeSeries(symbols, interval, outputsize, revalidateSeconds)
+  const out: Record<string, number[]> = {}
+  for (const [symbol, payload] of Object.entries(rows)) {
+    const closes: number[] = []
+    for (const value of payload.values ?? []) {
+      const close = parseMaybeNumber(value.close)
+      if (close != null && close > 0) closes.push(close)
+    }
+    out[symbol] = closes
+  }
+  return out
+}
+
 export function getCoinGeckoId(symbol: string): string | undefined {
   return COINGECKO_IDS[symbol.toUpperCase()]
 }
@@ -101,20 +331,17 @@ export async function getCryptoQuotesByCoingeckoIds(
 }
 
 export async function getStockPrices(symbols: string[]): Promise<Record<string, number>> {
-  const YahooFinance = (await import('yahoo-finance2')).default
-  const yahooFinance = new YahooFinance()
+  const quotes = await getStockQuotes(symbols)
   const result: Record<string, number> = {}
-  await Promise.all(
-    symbols.map(async (symbol) => {
-      try {
-        const quote = await yahooFinance.quote(symbol)
-        const p = quote.regularMarketPrice
-        if (p != null && typeof p === 'number') result[symbol.toUpperCase()] = p
-      } catch (e) {
-        console.error(`Failed to fetch price for ${symbol}`, e)
-      }
-    })
-  )
+  for (const symbol of normalizeStockSymbols(symbols)) {
+    const quote = quotes[symbol]
+    if (!quote) continue
+    const price =
+      parseMaybeNumber(quote.close) ??
+      parseMaybeNumber((quote as { price?: string }).price) ??
+      parseMaybeNumber((quote as { last?: string }).last)
+    if (price != null && price > 0) result[symbol] = price
+  }
   return result
 }
 
@@ -293,43 +520,27 @@ async function getStockHistory24h(
   symbols: string[],
   bucketTimestamps: number[]
 ): Promise<Record<string, TimePricePoint[]>> {
-  const unique = [...new Set(symbols.map((s) => s.toUpperCase()).filter(Boolean))]
+  const unique = normalizeStockSymbols(symbols)
   if (unique.length === 0) return {}
-  const pairs = await Promise.all(
-    unique.map(async (symbol) => {
-      try {
-        const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=15m&range=1d`
-        const res = await fetch(url, {
-          next: { revalidate: 60 },
-          headers: { 'User-Agent': 'FloorPort/1.0' },
-        })
-        if (!res.ok) return [symbol, []] as const
-        const data = (await res.json()) as {
-          chart?: {
-            result?: {
-              timestamp?: number[]
-              indicators?: { quote?: { close?: (number | null)[] }[] }
-            }[]
-          }
-        }
-        const result = data.chart?.result?.[0]
-        const ts = result?.timestamp ?? []
-        const closes = result?.indicators?.quote?.[0]?.close ?? []
-        const points: TimePricePoint[] = []
-        for (let i = 0; i < ts.length; i += 1) {
-          const price = closes[i]
-          if (price != null && !Number.isNaN(price) && price > 0) {
-            points.push({ timestamp: ts[i] * 1000, price })
-          }
-        }
-        return [symbol, normalizeToBucketPoints(points, bucketTimestamps)] as const
-      } catch (e) {
-        console.error(`Failed stock 24h history for ${symbol}`, e)
-        return [symbol, []] as const
-      }
-    })
-  )
-  return Object.fromEntries(pairs)
+  const seriesBySymbol = await getStockTimeSeries(unique, '15min', 96, 120)
+  const out: Record<string, TimePricePoint[]> = {}
+  for (const symbol of unique) {
+    const series = seriesBySymbol[symbol]?.values ?? []
+    const points: TimePricePoint[] = []
+    for (const value of series) {
+      const close = parseMaybeNumber(value.close)
+      if (close == null || close <= 0) continue
+      const rawDatetime = value.datetime?.trim()
+      if (!rawDatetime) continue
+      const timestamp = Date.parse(
+        /[zZ]|[+-]\d{2}:?\d{2}$/.test(rawDatetime) ? rawDatetime : `${rawDatetime}Z`
+      )
+      if (!Number.isFinite(timestamp)) continue
+      points.push({ timestamp, price: close })
+    }
+    out[symbol] = normalizeToBucketPoints(points, bucketTimestamps)
+  }
+  return out
 }
 
 /** 24h normalized price series per holding id, bucketed at intervalMinutes. */
@@ -388,19 +599,40 @@ export async function getLivePriceHistory24hByHoldingId(
 }
 
 async function getStockChangePercents(symbols: string[]): Promise<Record<string, number>> {
-  const YahooFinance = (await import('yahoo-finance2')).default
-  const yahooFinance = new YahooFinance()
+  const quotes = await getStockQuotes(symbols)
   const result: Record<string, number> = {}
-  await Promise.all(
-    symbols.map(async (symbol) => {
-      try {
-        const quote = await yahooFinance.quote(symbol)
-        const p = quote.regularMarketChangePercent
-        if (p != null && typeof p === 'number') result[symbol.toUpperCase()] = p
-      } catch (e) {
-        console.error(`Failed change % for ${symbol}`, e)
-      }
-    })
-  )
+  for (const symbol of normalizeStockSymbols(symbols)) {
+    const quote = quotes[symbol]
+    if (!quote) continue
+    const pct = parseMaybeNumber(quote.percent_change) ?? parseMaybeNumber(quote.change_percent)
+    if (pct != null && !Number.isNaN(pct)) result[symbol] = pct
+  }
   return result
+}
+
+export async function searchStockSymbols(
+  query: string,
+  outputsize = 12
+): Promise<Array<{ symbol: string; name: string }>> {
+  const q = query.trim()
+  if (q.length < 2) return []
+  const data = await fetchTwelveDataJson<{ data?: TwelveDataSymbolSearchItem[] }>(
+    '/symbol_search',
+    {
+      symbol: q,
+      outputsize: String(Math.max(1, Math.min(30, outputsize))),
+    },
+    600
+  )
+  const rows = data?.data ?? []
+  const out: Array<{ symbol: string; name: string }> = []
+  for (const row of rows) {
+    const symbol = row.symbol?.trim().toUpperCase()
+    if (!symbol) continue
+    const type = row.type?.trim().toUpperCase()
+    if (type && type !== 'COMMON STOCK' && type !== 'ETF' && type !== 'DR') continue
+    const name = row.instrument_name?.trim() || row.name?.trim() || symbol
+    out.push({ symbol, name })
+  }
+  return out
 }
