@@ -5,7 +5,7 @@ import { calcHoldingPnL } from '@/lib/calculations'
 import { formatMoney } from '@/lib/format'
 import type { Holding } from '@/types'
 import { Cell, Pie, PieChart, Sector, Tooltip } from 'recharts'
-import { useMemo, useState } from 'react'
+import { useId, useMemo, useState } from 'react'
 
 const COLORS = ['#7c6fd4', '#34d399', '#60a5fa', '#f59e0b', '#ef4444', '#22d3ee', '#f472b6']
 const OTHER_COLOR = '#64748b'
@@ -19,6 +19,7 @@ type Slice = {
 
 export function AllocationChart({ holdings }: { holdings: Holding[] }) {
   const { currency, usdToCad } = useDisplayCurrency()
+  const chartId = useId().replace(/:/g, '')
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
 
   const data = useMemo(() => {
@@ -122,6 +123,7 @@ export function AllocationChart({ holdings }: { holdings: Holding[] }) {
                 }}
               />
               <Pie
+                id={`allocation-chart-${chartId}`}
                 data={data.slices}
                 dataKey="value"
                 nameKey="name"
@@ -134,6 +136,7 @@ export function AllocationChart({ holdings }: { holdings: Holding[] }) {
                 stroke="rgba(15,19,27,0.45)"
                 strokeWidth={1}
                 activeIndex={activeIndex ?? -1}
+                isAnimationActive={false}
                 activeShape={(props: { cx?: number; cy?: number; innerRadius?: number; outerRadius?: number; startAngle?: number; endAngle?: number; fill?: string }) => (
                   <Sector
                     cx={props.cx}
