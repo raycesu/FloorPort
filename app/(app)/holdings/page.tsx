@@ -9,6 +9,7 @@ import {
 import { mapRowToHolding, mapRowToWallet } from '@/lib/mappers'
 import { getHoldingChangePercents, getLivePriceHistoryByHoldingId, getLivePrices } from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 
 export default async function HoldingsPage({
   searchParams,
@@ -19,12 +20,17 @@ export default async function HoldingsPage({
   const {
     data: { user },
   } = await supabase.auth.getUser()
+
+  if (!user) {
+    redirect('/login')
+  }
+
   const { wallet: walletParam } = await searchParams
 
   const { data: walletRows } = await supabase
     .from('wallets')
     .select('*')
-    .eq('user_id', user!.id)
+    .eq('user_id', user.id)
     .order('created_at', { ascending: true })
 
   const wallets = (walletRows ?? []).map((r) => mapRowToWallet(r as Record<string, unknown>))
@@ -34,7 +40,7 @@ export default async function HoldingsPage({
   const { data: allRows } = await supabase
     .from('holdings')
     .select('*')
-    .eq('user_id', user!.id)
+    .eq('user_id', user.id)
     .order('added_at', { ascending: false })
 
   const allHoldings = (allRows ?? []).map((r) => mapRowToHolding(r))

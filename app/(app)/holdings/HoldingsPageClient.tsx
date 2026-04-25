@@ -11,6 +11,7 @@ import { PerformanceBars } from '@/components/PerformanceBars'
 import { formatMoney, formatPercent } from '@/lib/format'
 import type { Holding, PortfolioSummary, Wallet } from '@/types'
 import { useRouter } from 'next/navigation'
+import type { CSSProperties } from 'react'
 import { useMemo, useState } from 'react'
 
 function PlusIcon() {
@@ -96,6 +97,34 @@ function ChevronDownIcon({ isOpen }: { isOpen: boolean }) {
   )
 }
 
+const holdingsHeroTopStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: '1.25rem',
+}
+
+const holdingsActionsStyle: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  justifyContent: 'flex-end',
+  gap: '0.75rem',
+}
+
+const holdingsMetricsGridStyle: CSSProperties = {
+  display: 'grid',
+  alignItems: 'stretch',
+  gap: '1.25rem',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
+}
+
+const holdingsStatsGridStyle: CSSProperties = {
+  display: 'contents',
+}
+
 function SummaryStat({
   label,
   value,
@@ -118,14 +147,14 @@ function SummaryStat({
 
   return (
     <div
-      className={`rounded-[24px] border px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${
+      className={`flex min-h-[130px] flex-col justify-center rounded-[24px] border px-5 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_18px_42px_rgba(3,8,20,0.18)] sm:px-6 ${
         accent
-          ? 'border-[#8b7ed8]/30 bg-[linear-gradient(135deg,rgba(139,126,216,0.16),rgba(255,255,255,0.035))]'
-          : 'border-fp-border bg-white/[0.035]'
+          ? 'border-[#8b7ed8]/35 bg-[radial-gradient(circle_at_top,rgba(139,126,216,0.24),transparent_58%),linear-gradient(135deg,rgba(139,126,216,0.14),rgba(255,255,255,0.04))]'
+          : 'border-fp-border bg-[linear-gradient(180deg,rgba(255,255,255,0.055),rgba(255,255,255,0.028))]'
       }`}
     >
       <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-fp-muted">{label}</p>
-      <p className={`mt-3 text-[1.55rem] font-semibold tracking-[-0.02em] tabular-nums ${valueClassName}`}>
+      <p className={`mt-3 text-[1.75rem] font-semibold leading-none tracking-[-0.03em] tabular-nums sm:text-[1.9rem] ${valueClassName}`}>
         {value}
       </p>
       {helper ? <p className="mt-1.5 text-sm tabular-nums text-fp-muted">{helper}</p> : null}
@@ -323,19 +352,10 @@ export function HoldingsPageClient({
 
   return (
     <div className="space-y-8 lg:space-y-9">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="text-[1.75rem] font-semibold tracking-[0.01em] text-white">Holdings</h1>
-          <p className="mt-2 max-w-2xl text-sm text-fp-muted">
-            Track wallet performance, allocation, and current positions.
-          </p>
-        </div>
-      </div>
-
       <section className="relative overflow-visible rounded-[32px] border border-fp-border bg-[radial-gradient(circle_at_top_left,rgba(139,126,216,0.18),transparent_34%),linear-gradient(180deg,rgba(24,31,42,0.98)_0%,rgba(14,19,29,0.99)_100%)] p-5 shadow-[0_28px_70px_rgba(3,8,20,0.34)] sm:p-7">
         <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
         <div className="relative space-y-6">
-          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+          <div className="fp-holdings-hero-top flex flex-col gap-5 md:flex-row md:items-start md:justify-between" style={holdingsHeroTopStyle}>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-3">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-fp-muted">Active wallet</p>
@@ -343,7 +363,7 @@ export function HoldingsPageClient({
                   Live portfolio
                 </span>
               </div>
-              <h2 className="mt-3 truncate text-[2.25rem] font-semibold leading-tight tracking-[-0.04em] text-fp-text sm:text-[2.85rem]">
+              <h2 className="mt-3 truncate text-5xl font-semibold leading-tight tracking-[-0.04em] text-fp-text">
                 {currentWallet?.name ?? 'No wallet selected'}
               </h2>
               <p className="mt-2 max-w-2xl text-sm text-fp-muted">
@@ -351,12 +371,12 @@ export function HoldingsPageClient({
               </p>
             </div>
 
-            <div className="flex flex-wrap gap-3 xl:justify-end">
+            <div className="fp-holdings-actions flex flex-wrap items-center gap-3 md:justify-end" style={holdingsActionsStyle}>
               <button
                 type="button"
                 onClick={() => setAddOpen(true)}
                 disabled={!initialWalletId}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-fp-accent px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(139,126,216,0.28)] transition hover:bg-fp-accent-hover disabled:opacity-40"
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-fp-accent px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(139,126,216,0.28)] transition hover:bg-fp-accent-hover disabled:opacity-40"
               >
                 <PlusIcon />
                 Add holding
@@ -367,7 +387,7 @@ export function HoldingsPageClient({
                   setWalletActionError(null)
                   setCreateWalletOpen(true)
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-fp-border bg-white/[0.045] px-4 py-3 text-sm font-medium text-fp-text transition hover:border-[#8b7ed8]/40 hover:bg-white/[0.075]"
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-2xl border border-fp-border bg-white/[0.045] px-4 py-3 text-sm font-medium text-fp-text transition hover:border-[#8b7ed8]/40 hover:bg-white/[0.075]"
               >
                 <PlusIcon />
                 New wallet
@@ -381,7 +401,7 @@ export function HoldingsPageClient({
                   setRenameId(currentWallet.id)
                   setRenameName(currentWallet.name)
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-fp-border bg-white/[0.045] px-4 py-3 text-sm font-medium text-fp-text transition hover:border-[#8b7ed8]/40 hover:bg-white/[0.075] disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-2xl border border-fp-border bg-white/[0.045] px-4 py-3 text-sm font-medium text-fp-text transition hover:border-[#8b7ed8]/40 hover:bg-white/[0.075] disabled:opacity-50"
               >
                 <RenameIcon />
                 Rename
@@ -394,7 +414,7 @@ export function HoldingsPageClient({
                   setWalletActionError(null)
                   setDeleteWalletTarget(currentWallet)
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[rgba(248,113,113,0.24)] bg-[rgba(248,113,113,0.08)] px-4 py-3 text-sm font-medium text-[#ffcdcd] transition hover:bg-[rgba(248,113,113,0.14)] disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-2xl border border-[rgba(248,113,113,0.24)] bg-[rgba(248,113,113,0.08)] px-4 py-3 text-sm font-medium text-[#ffcdcd] transition hover:bg-[rgba(248,113,113,0.14)] disabled:opacity-50"
               >
                 <TrashIcon />
                 Delete
@@ -402,7 +422,10 @@ export function HoldingsPageClient({
             </div>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(280px,0.82fr)_minmax(0,1fr)] xl:items-stretch">
+          <div
+            className="fp-holdings-metrics-grid grid gap-5 md:grid-cols-[minmax(280px,0.95fr)_minmax(0,1fr)_minmax(0,1fr)] md:items-stretch"
+            style={holdingsMetricsGridStyle}
+          >
             <div
               className="relative z-40 rounded-[26px] border border-fp-border bg-[#111722] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5"
               onBlur={handleWalletSwitcherBlur}
@@ -485,7 +508,7 @@ export function HoldingsPageClient({
               ) : null}
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:gap-5">
+            <div className="fp-holdings-stats-grid grid gap-4 sm:grid-cols-2 md:contents" style={holdingsStatsGridStyle}>
               <SummaryStat label="Wallet value" value={currentWalletValue} accent />
               <SummaryStat
                 label="Total P/L"
