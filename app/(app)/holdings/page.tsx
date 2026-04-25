@@ -1,7 +1,13 @@
 import { HoldingsPageClient } from './HoldingsPageClient'
-import { calcWalletValues, enrichHoldingsWithMarketChanges, enrichHoldingsWithPrices } from '@/lib/calculations'
+import {
+  calcPortfolioHistorySeries,
+  calcPortfolioSummary,
+  calcWalletValues,
+  enrichHoldingsWithMarketChanges,
+  enrichHoldingsWithPrices,
+} from '@/lib/calculations'
 import { mapRowToHolding, mapRowToWallet } from '@/lib/mappers'
-import { getHoldingChangePercents, getLivePrices } from '@/lib/prices'
+import { getHoldingChangePercents, getLivePriceHistoryByHoldingId, getLivePrices } from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
 
 export default async function HoldingsPage({
@@ -50,6 +56,15 @@ export default async function HoldingsPage({
   const enriched = walletId
     ? enrichedAll.filter((h) => h.wallet_id === walletId)
     : []
+  const selectedKeys = enriched.map((h) => ({
+    id: h.id,
+    symbol: h.symbol,
+    asset_type: h.asset_type,
+    coingecko_id: h.coingecko_id,
+  }))
+  const historyByHoldingId = await getLivePriceHistoryByHoldingId(selectedKeys, '24H')
+  const performanceSeries = calcPortfolioHistorySeries(enriched, historyByHoldingId)
+  const walletSummary = calcPortfolioSummary(enriched)
 
   return (
     <HoldingsPageClient
@@ -57,6 +72,8 @@ export default async function HoldingsPage({
       wallets={wallets}
       initialWalletId={walletId}
       walletValues={walletValues}
+      walletSummary={walletSummary}
+      performanceSeries={performanceSeries}
     />
   )
 }

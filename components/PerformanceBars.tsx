@@ -37,9 +37,15 @@ function formatXAxisLabel(timestamp: number, range: PerformanceRange) {
 export function PerformanceBars({
   series,
   initialRange = '24H',
+  title,
+  description,
+  apiQuery,
 }: {
   series: { timestamp: number; value: number }[]
   initialRange?: PerformanceRange
+  title?: string
+  description?: string
+  apiQuery?: Record<string, string | undefined>
 }) {
   const { currency, usdToCad } = useDisplayCurrency()
   const [selectedRange, setSelectedRange] = useState<PerformanceRange>(initialRange)
@@ -47,10 +53,16 @@ export function PerformanceBars({
     [initialRange]: series,
   } as Record<PerformanceRange, { timestamp: number; value: number }[]>)
   const [loadingRange, setLoadingRange] = useState<PerformanceRange | null>(null)
+  const [hasMounted, setHasMounted] = useState(false)
+  const apiQueryKey = useMemo(() => JSON.stringify(apiQuery ?? {}), [apiQuery])
 
   useEffect(() => {
-    setSeriesByRange((prev) => ({ ...prev, [initialRange]: series }))
-  }, [initialRange, series])
+    setHasMounted(true)
+  }, [])
+
+  useEffect(() => {
+    setSeriesByRange({ [initialRange]: series } as Record<PerformanceRange, { timestamp: number; value: number }[]>)
+  }, [apiQueryKey, initialRange, series])
 
   useEffect(() => {
     if (seriesByRange[selectedRange]) return
@@ -58,7 +70,12 @@ export function PerformanceBars({
     async function load() {
       setLoadingRange(selectedRange)
       try {
-        const res = await fetch(`/api/portfolio-history?range=${encodeURIComponent(toApiRange(selectedRange))}`)
+        const params = new URLSearchParams({ range: toApiRange(selectedRange) })
+        const query = JSON.parse(apiQueryKey) as Record<string, string | undefined>
+        Object.entries(query).forEach(([key, value]) => {
+          if (value) params.set(key, value)
+        })
+        const res = await fetch(`/api/portfolio-history?${params.toString()}`)
         if (!res.ok) throw new Error('Failed to load history')
         const json = (await res.json()) as { series?: { timestamp: number; value: number }[] }
         if (!cancelled) {
@@ -79,7 +96,7 @@ export function PerformanceBars({
     return () => {
       cancelled = true
     }
-  }, [selectedRange, seriesByRange])
+  }, [apiQueryKey, selectedRange, seriesByRange])
 
   const data = useMemo(
     () =>
@@ -121,7 +138,7 @@ export function PerformanceBars({
 
   return (
     <div
-      className="rounded-[24px]"
+      className="flex h-full min-w-0 flex-col rounded-[24px]"
       style={{
         background: '#161b24',
         border: '1px solid rgba(159,174,197,0.16)',
@@ -134,10 +151,10 @@ export function PerformanceBars({
       >
         <div className="space-y-1">
           <h2 className="font-semibold" style={{ fontSize: '15px', color: '#f5f7fb' }}>
-            {selectedRange} Performance
+            {title ?? `${selectedRange} Performance`}
           </h2>
           <p className="text-[13px]" style={{ color: '#93a0b4' }}>
-            Portfolio value across the selected range
+            {description ?? 'Portfolio value across the selected range'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -177,70 +194,72 @@ export function PerformanceBars({
         </div>
       </div>
 
-      <div className="p-6">
-        <div className="h-[300px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ left: 6, right: 6, top: 8, bottom: 0 }}>
-              <defs>
-                <linearGradient id="perfGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={lineColor} stopOpacity={0.22} />
-                  <stop offset="100%" stopColor={lineColor} stopOpacity={0.01} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="0" stroke="rgba(159,174,197,0.08)" vertical={false} />
-              <XAxis
-                dataKey="label"
-                minTickGap={28}
-                tick={{ fill: '#8f98aa', fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fill: '#8f98aa', fontSize: 11 }}
-                domain={yDomain}
-                axisLine={false}
-                tickLine={false}
-                width={84}
-                tickFormatter={(v) =>
-                  `${currency === 'USD' ? '$' : 'C$'}${Math.round((v as number) * axisDivisor).toLocaleString('en-US')}`
-                }
-              />
-              <Tooltip
-                cursor={{ stroke: 'rgba(159,174,197,0.16)', strokeWidth: 1 }}
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null
-                  const row = payload[0].payload as { label: string; value: number }
-                  return (
-                    <div
-                      className="rounded-xl px-3 py-2 text-xs"
-                      style={{
-                        background: '#1c2330',
-                        border: '1px solid rgba(159,174,197,0.14)',
-                        boxShadow: '0 12px 30px rgba(3,8,20,0.35)',
-                        color: '#f5f7fb',
-                      }}
-                    >
-                      <p className="font-medium" style={{ color: '#93a0b4' }}>
-                        {row.label}
-                      </p>
-                      <p className="mt-0.5 font-semibold">
-                        {formatMoney(row.value, currency, usdToCad)}
-                      </p>
-                    </div>
-                  )
-                }}
-              />
-              <Area
-                type="monotone"
-                dataKey="value"
-                stroke={lineColor}
-                strokeWidth={2.75}
-                fill="url(#perfGradient)"
-                dot={false}
-                isAnimationActive={false}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+      <div className="flex flex-1 flex-col p-6">
+        <div className="h-[280px] w-full flex-1 md:h-[300px]">
+          {hasMounted ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={data} margin={{ left: 6, right: 6, top: 8, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="perfGradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={lineColor} stopOpacity={0.22} />
+                    <stop offset="100%" stopColor={lineColor} stopOpacity={0.01} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="0" stroke="rgba(159,174,197,0.08)" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  minTickGap={28}
+                  tick={{ fill: '#8f98aa', fontSize: 11 }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fill: '#8f98aa', fontSize: 11 }}
+                  domain={yDomain}
+                  axisLine={false}
+                  tickLine={false}
+                  width={84}
+                  tickFormatter={(v) =>
+                    `${currency === 'USD' ? '$' : 'C$'}${Math.round((v as number) * axisDivisor).toLocaleString('en-US')}`
+                  }
+                />
+                <Tooltip
+                  cursor={{ stroke: 'rgba(159,174,197,0.16)', strokeWidth: 1 }}
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null
+                    const row = payload[0].payload as { label: string; value: number }
+                    return (
+                      <div
+                        className="rounded-xl px-3 py-2 text-xs"
+                        style={{
+                          background: '#1c2330',
+                          border: '1px solid rgba(159,174,197,0.14)',
+                          boxShadow: '0 12px 30px rgba(3,8,20,0.35)',
+                          color: '#f5f7fb',
+                        }}
+                      >
+                        <p className="font-medium" style={{ color: '#93a0b4' }}>
+                          {row.label}
+                        </p>
+                        <p className="mt-0.5 font-semibold">
+                          {formatMoney(row.value, currency, usdToCad)}
+                        </p>
+                      </div>
+                    )
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke={lineColor}
+                  strokeWidth={2.75}
+                  fill="url(#perfGradient)"
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : null}
         </div>
         {loadingRange ? (
           <p className="mt-4 text-[12px]" style={{ color: '#93a0b4' }}>

@@ -5,7 +5,7 @@ import { calcHoldingPnL } from '@/lib/calculations'
 import { formatMoney } from '@/lib/format'
 import type { Holding } from '@/types'
 import { Cell, Pie, PieChart, Sector, Tooltip } from 'recharts'
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 
 const COLORS = ['#7c6fd4', '#34d399', '#60a5fa', '#f59e0b', '#ef4444', '#22d3ee', '#f472b6']
 const OTHER_COLOR = '#64748b'
@@ -17,10 +17,23 @@ type Slice = {
   color: string
 }
 
-export function AllocationChart({ holdings }: { holdings: Holding[] }) {
+export function AllocationChart({
+  holdings,
+  title = 'Asset Allocation',
+  description = 'Positions under 5% are grouped into Other',
+}: {
+  holdings: Holding[]
+  title?: string
+  description?: string
+}) {
   const { currency, usdToCad } = useDisplayCurrency()
   const chartId = useId().replace(/:/g, '')
   const [activeIndex, setActiveIndex] = useState<number | null>(null)
+  const [hasMounted, setHasMounted] = useState(false)
+
+  useEffect(() => {
+    setHasMounted(true)
+  }, [])
 
   const data = useMemo(() => {
     const total = holdings.reduce((sum, holding) => sum + calcHoldingPnL(holding).value, 0)
@@ -73,7 +86,7 @@ export function AllocationChart({ holdings }: { holdings: Holding[] }) {
 
   return (
     <div
-      className="rounded-[24px]"
+      className="flex h-full min-w-0 flex-col rounded-[24px]"
       style={{
         background: '#161b24',
         border: '1px solid rgba(159,174,197,0.16)',
@@ -82,80 +95,84 @@ export function AllocationChart({ holdings }: { holdings: Holding[] }) {
     >
       <div className="px-6 py-5" style={{ borderBottom: '1px solid rgba(159,174,197,0.12)' }}>
         <h2 className="font-semibold" style={{ fontSize: '15px', color: '#f5f7fb' }}>
-          Asset Allocation
+          {title}
         </h2>
         <p className="mt-1 text-[13px]" style={{ color: '#93a0b4' }}>
-          Positions under 5% are grouped into Other
+          {description}
         </p>
       </div>
 
-      <div className="p-6">
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-center">
-          <div className="relative mx-auto shrink-0 lg:mx-0" style={{ width: 250, height: 250 }}>
-            <PieChart width={250} height={250}>
-              <Tooltip
-                cursor={false}
-                wrapperStyle={{ zIndex: 80, outline: 'none', pointerEvents: 'none' }}
-                allowEscapeViewBox={{ x: true, y: true }}
-                content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null
-                  const p = payload[0].payload as Slice
-                  return (
-                    <div
-                      className="min-w-[170px] rounded-xl px-3 py-2 text-xs shadow-2xl"
-                      style={{
-                        background: '#1c2330',
-                        border: '1px solid rgba(159,174,197,0.2)',
-                        boxShadow: '0 14px 30px rgba(3,8,20,0.45)',
-                      }}
-                    >
-                      <p className="font-semibold" style={{ color: '#f5f7fb' }}>
-                        {p.name}
-                      </p>
-                      <p className="mt-1 tabular-nums" style={{ color: '#d8deea' }}>
-                        {formatMoney(p.value, currency, usdToCad)}
-                      </p>
-                      <p className="tabular-nums" style={{ color: '#93a0b4' }}>
-                        {p.pct.toFixed(1)}%
-                      </p>
-                    </div>
-                  )
-                }}
-              />
-              <Pie
-                id={`allocation-chart-${chartId}`}
-                data={data.slices}
-                dataKey="value"
-                nameKey="name"
-                cx={125}
-                cy={125}
-                innerRadius={72}
-                outerRadius={108}
-                paddingAngle={1.5}
-                cornerRadius={5}
-                stroke="rgba(15,19,27,0.45)"
-                strokeWidth={1}
-                activeIndex={activeIndex ?? -1}
-                isAnimationActive={false}
-                activeShape={(props: { cx?: number; cy?: number; innerRadius?: number; outerRadius?: number; startAngle?: number; endAngle?: number; fill?: string }) => (
-                  <Sector
-                    cx={props.cx}
-                    cy={props.cy}
-                    innerRadius={props.innerRadius}
-                    outerRadius={(props.outerRadius ?? 0) + 8}
-                    startAngle={props.startAngle}
-                    endAngle={props.endAngle}
-                    fill={props.fill}
-                  />
-                )}
-                onMouseEnter={(_, idx) => setActiveIndex(idx)}
-                onMouseLeave={() => setActiveIndex(null)}
-              >
-                {data.slices.map((entry) => (
-                  <Cell key={entry.name} fill={entry.color} />
-                ))}
-              </Pie>
-            </PieChart>
+      <div className="flex flex-1 flex-col p-5 sm:p-6">
+        <div className="flex flex-1 flex-col gap-6 xl:flex-row xl:items-center">
+          <div className="relative mx-auto shrink-0 xl:mx-0" style={{ width: 230, height: 230 }}>
+            {hasMounted ? (
+              <PieChart width={230} height={230}>
+                <Tooltip
+                  cursor={false}
+                  wrapperStyle={{ zIndex: 80, outline: 'none', pointerEvents: 'none' }}
+                  allowEscapeViewBox={{ x: true, y: true }}
+                  content={({ active, payload }) => {
+                    if (!active || !payload?.length) return null
+                    const p = payload[0].payload as Slice
+                    return (
+                      <div
+                        className="min-w-[170px] rounded-xl px-3 py-2 text-xs shadow-2xl"
+                        style={{
+                          background: '#1c2330',
+                          border: '1px solid rgba(159,174,197,0.2)',
+                          boxShadow: '0 14px 30px rgba(3,8,20,0.45)',
+                        }}
+                      >
+                        <p className="font-semibold" style={{ color: '#f5f7fb' }}>
+                          {p.name}
+                        </p>
+                        <p className="mt-1 tabular-nums" style={{ color: '#d8deea' }}>
+                          {formatMoney(p.value, currency, usdToCad)}
+                        </p>
+                        <p className="tabular-nums" style={{ color: '#93a0b4' }}>
+                          {p.pct.toFixed(1)}%
+                        </p>
+                      </div>
+                    )
+                  }}
+                />
+                <Pie
+                  id={`allocation-chart-${chartId}`}
+                  data={data.slices}
+                  dataKey="value"
+                  nameKey="name"
+                  cx={115}
+                  cy={115}
+                  innerRadius={68}
+                  outerRadius={100}
+                  paddingAngle={1.5}
+                  cornerRadius={5}
+                  stroke="rgba(15,19,27,0.45)"
+                  strokeWidth={1}
+                  activeIndex={activeIndex ?? -1}
+                  isAnimationActive={false}
+                  activeShape={(props: { cx?: number; cy?: number; innerRadius?: number; outerRadius?: number; startAngle?: number; endAngle?: number; fill?: string }) => (
+                    <Sector
+                      cx={props.cx}
+                      cy={props.cy}
+                      innerRadius={props.innerRadius}
+                      outerRadius={(props.outerRadius ?? 0) + 8}
+                      startAngle={props.startAngle}
+                      endAngle={props.endAngle}
+                      fill={props.fill}
+                    />
+                  )}
+                  onMouseEnter={(_, idx) => setActiveIndex(idx)}
+                  onMouseLeave={() => setActiveIndex(null)}
+                >
+                  {data.slices.map((entry) => (
+                    <Cell key={entry.name} fill={entry.color} />
+                  ))}
+                </Pie>
+              </PieChart>
+            ) : (
+              <div className="h-[230px] w-[230px]" aria-hidden />
+            )}
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-xs font-medium uppercase tracking-[0.09em]" style={{ color: '#93a0b4' }}>
                 Total Value

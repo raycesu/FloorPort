@@ -1,36 +1,17 @@
 'use client'
 
 import { AddHoldingModal } from '@/components/AddHoldingModal'
+import { AllocationChart } from '@/components/AllocationChart'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { useDisplayCurrency } from '@/components/CurrencyContext'
 import { EditHoldingModal } from '@/components/EditHoldingModal'
 import { HoldingsTable } from '@/components/HoldingsTable'
 import { ModalShell } from '@/components/ModalShell'
-import { formatMoney } from '@/lib/format'
-import type { Holding, Wallet } from '@/types'
+import { PerformanceBars } from '@/components/PerformanceBars'
+import { formatMoney, formatPercent } from '@/lib/format'
+import type { Holding, PortfolioSummary, Wallet } from '@/types'
 import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
-
-function WalletIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v1H5a2 2 0 0 0-2 2z" />
-      <path d="M3 10a2 2 0 0 1 2-2h15a1 1 0 0 1 1 1v7a3 3 0 0 1-3 3H5a2 2 0 0 1-2-2z" />
-      <path d="M18 14h.01" />
-    </svg>
-  )
-}
 
 function PlusIcon() {
   return (
@@ -95,36 +76,139 @@ function TrashIcon() {
   )
 }
 
+function ChevronDownIcon({ isOpen }: { isOpen: boolean }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+      aria-hidden
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
+}
+
+function SummaryStat({
+  label,
+  value,
+  helper,
+  tone = 'neutral',
+  accent = false,
+}: {
+  label: string
+  value: string
+  helper?: string
+  tone?: 'neutral' | 'positive' | 'negative'
+  accent?: boolean
+}) {
+  const valueClassName =
+    tone === 'positive'
+      ? 'text-fp-positive'
+      : tone === 'negative'
+        ? 'text-[#f87171]'
+        : 'text-fp-text'
+
+  return (
+    <div
+      className={`rounded-[24px] border px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] ${
+        accent
+          ? 'border-[#8b7ed8]/30 bg-[linear-gradient(135deg,rgba(139,126,216,0.16),rgba(255,255,255,0.035))]'
+          : 'border-fp-border bg-white/[0.035]'
+      }`}
+    >
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-fp-muted">{label}</p>
+      <p className={`mt-3 text-[1.55rem] font-semibold tracking-[-0.02em] tabular-nums ${valueClassName}`}>
+        {value}
+      </p>
+      {helper ? <p className="mt-1.5 text-sm tabular-nums text-fp-muted">{helper}</p> : null}
+    </div>
+  )
+}
+
 export function HoldingsPageClient({
   initialHoldings,
   wallets,
   initialWalletId,
   walletValues,
+  walletSummary,
+  performanceSeries,
 }: {
   initialHoldings: Holding[]
   wallets: Wallet[]
   initialWalletId: string
   walletValues: Record<string, number>
+  walletSummary: PortfolioSummary
+  performanceSeries: { timestamp: number; value: number }[]
 }) {
   const router = useRouter()
   const { currency, usdToCad } = useDisplayCurrency()
   const [addOpen, setAddOpen] = useState(false)
   const [editHolding, setEditHolding] = useState<Holding | null>(null)
   const [editOpen, setEditOpen] = useState(false)
+  const [createWalletOpen, setCreateWalletOpen] = useState(false)
   const [newWalletName, setNewWalletName] = useState('')
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renameName, setRenameName] = useState('')
   const [walletActionError, setWalletActionError] = useState<string | null>(null)
   const [deleteHoldingTarget, setDeleteHoldingTarget] = useState<Holding | null>(null)
   const [deleteWalletTarget, setDeleteWalletTarget] = useState<Wallet | null>(null)
+  const [walletSwitcherOpen, setWalletSwitcherOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const currentWallet = wallets.find((w) => w.id === initialWalletId) ?? null
   const currentWalletValue = formatMoney(walletValues[initialWalletId] ?? 0, currency, usdToCad)
-  const nonCashHoldingsCount = useMemo(
-    () => initialHoldings.filter((holding) => holding.asset_type !== 'cash').length,
-    [initialHoldings]
+  const currentWalletPnl = formatMoney(walletSummary.total_pnl, currency, usdToCad)
+  const currentWalletPnlPercent = formatPercent(walletSummary.total_pnl_percent)
+  const isWalletPnlPositive = walletSummary.total_pnl >= 0
+  const walletOptions = useMemo(
+    () =>
+      wallets.map((wallet) => ({
+        ...wallet,
+        formattedValue: formatMoney(walletValues[wallet.id] ?? 0, currency, usdToCad),
+      })),
+    [currency, usdToCad, walletValues, wallets]
   )
+  const selectedWalletOption = walletOptions.find((wallet) => wallet.id === initialWalletId) ?? null
+
+  const handleWalletSwitcherBlur = (event: React.FocusEvent<HTMLDivElement>) => {
+    const nextFocusedElement = event.relatedTarget as Node | null
+    if (nextFocusedElement && event.currentTarget.contains(nextFocusedElement)) return
+
+    setWalletSwitcherOpen(false)
+  }
+
+  const handleWalletSwitcherKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Escape') return
+
+    setWalletSwitcherOpen(false)
+  }
+
+  const handleWalletSwitcherButtonKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'Enter' && event.key !== ' ') return
+
+    event.preventDefault()
+    setWalletSwitcherOpen(true)
+  }
+
+  const handleWalletOptionSelect = (id: string) => {
+    setWalletSwitcherOpen(false)
+    selectWallet(id)
+  }
+
+  const handleWalletOptionKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, id: string) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+
+    event.preventDefault()
+    handleWalletOptionSelect(id)
+  }
 
   function openEdit(h: Holding) {
     setEditHolding(h)
@@ -152,6 +236,7 @@ export function HoldingsPageClient({
       const row = await res.json().catch(() => null)
       if (res.ok && row?.id) {
         setNewWalletName('')
+        setCreateWalletOpen(false)
         router.push(`/holdings?wallet=${encodeURIComponent(row.id)}`)
         router.refresh()
         return
@@ -237,109 +322,56 @@ export function HoldingsPageClient({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 lg:space-y-9">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-[1.75rem] font-semibold tracking-[0.01em] text-white">Holdings</h1>
           <p className="mt-2 max-w-2xl text-sm text-fp-muted">
-            Manage each wallet cleanly, keep balances organized, and update positions without jumping through awkward prompts.
+            Track wallet performance, allocation, and current positions.
           </p>
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.85fr)]">
-        <section
-          className="rounded-[28px] border border-fp-border bg-[linear-gradient(180deg,rgba(24,31,42,0.95)_0%,rgba(18,24,34,0.98)_100%)] p-6 shadow-[0_24px_60px_rgba(3,8,20,0.24)]"
-        >
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0">
-                <div className="inline-flex items-center gap-2 rounded-full border border-fp-border bg-white/[0.04] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">
-                  <WalletIcon />
-                  Active wallet
-                </div>
-                <h2 className="mt-4 text-[1.6rem] font-semibold tracking-[0.01em] text-fp-text">
-                  {currentWallet?.name ?? 'No wallet selected'}
-                </h2>
-                <p className="mt-2 text-sm text-fp-muted">
-                  Switch wallets, review the current value, and add new holdings from one place.
-                </p>
+      <section className="relative overflow-visible rounded-[32px] border border-fp-border bg-[radial-gradient(circle_at_top_left,rgba(139,126,216,0.18),transparent_34%),linear-gradient(180deg,rgba(24,31,42,0.98)_0%,rgba(14,19,29,0.99)_100%)] p-5 shadow-[0_28px_70px_rgba(3,8,20,0.34)] sm:p-7">
+        <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+        <div className="relative space-y-6">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-fp-muted">Active wallet</p>
+                <span className="rounded-full border border-[#8b7ed8]/30 bg-[#8b7ed8]/10 px-3 py-1 text-[11px] font-semibold text-[#d8d1ff]">
+                  Live portfolio
+                </span>
               </div>
+              <h2 className="mt-3 truncate text-[2.25rem] font-semibold leading-tight tracking-[-0.04em] text-fp-text sm:text-[2.85rem]">
+                {currentWallet?.name ?? 'No wallet selected'}
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm text-fp-muted">
+                Manage wallet holdings, performance, and allocation from one focused workspace.
+              </p>
+            </div>
 
+            <div className="flex flex-wrap gap-3 xl:justify-end">
               <button
                 type="button"
                 onClick={() => setAddOpen(true)}
                 disabled={!initialWalletId}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-fp-accent px-5 py-3 text-sm font-semibold text-white shadow-[0_16px_32px_rgba(139,126,216,0.24)] transition hover:bg-fp-accent-hover disabled:opacity-40"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-fp-accent px-5 py-3 text-sm font-semibold text-white shadow-[0_18px_36px_rgba(139,126,216,0.28)] transition hover:bg-fp-accent-hover disabled:opacity-40"
               >
                 <PlusIcon />
                 Add holding
               </button>
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px_180px]">
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">
-                  Wallet
-                </label>
-                <select
-                  className="mt-2 w-full rounded-2xl border border-fp-input-border bg-[#121722] px-4 py-3 text-sm font-medium text-fp-text outline-none transition focus:ring-2 focus:ring-[#7c6fd4]"
-                  value={initialWalletId}
-                  onChange={(e) => selectWallet(e.target.value)}
-                >
-                  {wallets.map((wallet) => (
-                    <option key={wallet.id} value={wallet.id}>
-                      {wallet.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="rounded-[22px] border border-fp-border bg-white/[0.03] px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">Wallet value</p>
-                <p className="mt-3 text-[1.5rem] font-semibold tracking-[0.01em] text-fp-text">{currentWalletValue}</p>
-              </div>
-
-              <div className="rounded-[22px] border border-fp-border bg-white/[0.03] px-4 py-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">Positions</p>
-                <p className="mt-3 text-[1.5rem] font-semibold tracking-[0.01em] text-fp-text">{initialHoldings.length}</p>
-                <p className="mt-2 text-xs text-fp-muted">{nonCashHoldingsCount} market positions</p>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="rounded-[28px] border border-fp-border bg-[linear-gradient(180deg,rgba(24,31,42,0.95)_0%,rgba(18,24,34,0.98)_100%)] p-6 shadow-[0_24px_60px_rgba(3,8,20,0.24)]">
-          <div className="flex h-full flex-col gap-5">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">Wallet actions</p>
-              <h3 className="mt-3 text-lg font-semibold text-fp-text">Create, rename, or remove wallets</h3>
-              <p className="mt-2 text-sm text-fp-muted">
-                Keep names tidy and remove empty wallets once you no longer need them.
-              </p>
-            </div>
-
-            <form onSubmit={createWallet} className="space-y-3 rounded-[22px] border border-fp-border bg-white/[0.03] p-4">
-              <div>
-                <label className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">New wallet name</label>
-                <input
-                  value={newWalletName}
-                  onChange={(e) => setNewWalletName(e.target.value)}
-                  placeholder="Enter wallet name"
-                  className="mt-2 w-full"
-                />
-              </div>
               <button
-                type="submit"
-                disabled={busy || !newWalletName.trim()}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-fp-accent px-4 py-3 text-sm font-semibold text-white transition hover:bg-fp-accent-hover disabled:opacity-50"
+                type="button"
+                onClick={() => {
+                  setWalletActionError(null)
+                  setCreateWalletOpen(true)
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-fp-border bg-white/[0.045] px-4 py-3 text-sm font-medium text-fp-text transition hover:border-[#8b7ed8]/40 hover:bg-white/[0.075]"
               >
                 <PlusIcon />
-                Create wallet
+                New wallet
               </button>
-            </form>
-
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <button
                 type="button"
                 disabled={busy || !currentWallet}
@@ -349,10 +381,10 @@ export function HoldingsPageClient({
                   setRenameId(currentWallet.id)
                   setRenameName(currentWallet.name)
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-fp-border bg-white/[0.03] px-4 py-3 text-sm font-medium text-fp-text transition hover:bg-white/[0.06] disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-fp-border bg-white/[0.045] px-4 py-3 text-sm font-medium text-fp-text transition hover:border-[#8b7ed8]/40 hover:bg-white/[0.075] disabled:opacity-50"
               >
                 <RenameIcon />
-                Rename wallet
+                Rename
               </button>
               <button
                 type="button"
@@ -362,20 +394,128 @@ export function HoldingsPageClient({
                   setWalletActionError(null)
                   setDeleteWalletTarget(currentWallet)
                 }}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[rgba(248,113,113,0.18)] bg-[rgba(248,113,113,0.06)] px-4 py-3 text-sm font-medium text-[#ffcdcd] transition hover:bg-[rgba(248,113,113,0.12)] disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[rgba(248,113,113,0.24)] bg-[rgba(248,113,113,0.08)] px-4 py-3 text-sm font-medium text-[#ffcdcd] transition hover:bg-[rgba(248,113,113,0.14)] disabled:opacity-50"
               >
                 <TrashIcon />
-                Delete wallet
+                Delete
               </button>
             </div>
-
-            {walletActionError ? (
-              <div className="rounded-[20px] border border-[rgba(248,113,113,0.25)] bg-[rgba(248,113,113,0.08)] px-4 py-3 text-sm text-[#ffcbcb]">
-                {walletActionError}
-              </div>
-            ) : null}
           </div>
-        </section>
+
+          <div className="grid gap-5 xl:grid-cols-[minmax(280px,0.82fr)_minmax(0,1fr)] xl:items-stretch">
+            <div
+              className="relative z-40 rounded-[26px] border border-fp-border bg-[#111722] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-5"
+              onBlur={handleWalletSwitcherBlur}
+              onKeyDown={handleWalletSwitcherKeyDown}
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">
+                Switch wallet
+              </span>
+              <button
+                type="button"
+                className={`mt-3 flex w-full items-center justify-between gap-4 rounded-[22px] border px-4 py-4 text-left outline-none transition ${
+                  walletSwitcherOpen
+                    ? 'border-[#8b7ed8] bg-[#171d2b] ring-2 ring-[#8b7ed8]/25'
+                    : 'border-fp-input-border bg-[#0d1320] hover:border-[#8b7ed8]/60 hover:bg-[#151b29]'
+                }`}
+                aria-haspopup="listbox"
+                aria-expanded={walletSwitcherOpen}
+                onClick={() => setWalletSwitcherOpen((isOpen) => !isOpen)}
+                onKeyDown={handleWalletSwitcherButtonKeyDown}
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-base font-semibold text-fp-text">
+                    {selectedWalletOption?.name ?? 'Choose a wallet'}
+                  </span>
+                  <span className="mt-1 block text-sm tabular-nums text-fp-muted">
+                    {selectedWalletOption?.formattedValue ?? 'No wallet value'}
+                  </span>
+                </span>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-fp-border bg-white/[0.05] text-fp-muted">
+                  <ChevronDownIcon isOpen={walletSwitcherOpen} />
+                </span>
+              </button>
+
+              {walletSwitcherOpen ? (
+                <div
+                  role="listbox"
+                  aria-label="Wallets"
+                  className="absolute left-4 right-4 z-50 mt-3 overflow-hidden rounded-[22px] border border-[#2b3446] bg-[#0b111d] p-2 shadow-[0_28px_80px_rgba(0,0,0,0.62)]"
+                >
+                  <div className="max-h-64 overflow-y-auto overscroll-contain pr-1">
+                    {walletOptions.map((wallet) => {
+                      const isSelected = wallet.id === initialWalletId
+
+                      return (
+                        <button
+                          key={wallet.id}
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          onClick={() => handleWalletOptionSelect(wallet.id)}
+                          onKeyDown={(event) => handleWalletOptionKeyDown(event, wallet.id)}
+                          className={`flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left outline-none transition focus:ring-2 focus:ring-[#8b7ed8]/40 ${
+                            isSelected ? 'bg-[#8b7ed8]/14' : 'hover:bg-white/[0.055]'
+                          }`}
+                        >
+                          <span
+                            className={`h-2.5 w-2.5 shrink-0 rounded-full ring-4 ${
+                              isSelected ? 'bg-fp-accent' : 'bg-white/[0.14]'
+                            } ${isSelected ? 'ring-[#8b7ed8]/15' : 'ring-transparent'}`}
+                            aria-hidden
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold text-fp-text" title={wallet.name}>
+                              {wallet.name}
+                            </span>
+                            <span className="mt-0.5 block text-xs tabular-nums text-fp-muted">
+                              {wallet.formattedValue}
+                            </span>
+                          </span>
+                          {isSelected ? (
+                            <span className="rounded-full border border-[#8b7ed8]/25 bg-[#8b7ed8]/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#d8d1ff]">
+                              Active
+                            </span>
+                          ) : null}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:gap-5">
+              <SummaryStat label="Wallet value" value={currentWalletValue} accent />
+              <SummaryStat
+                label="Total P/L"
+                value={currentWalletPnl}
+                helper={currentWalletPnlPercent}
+                tone={isWalletPnlPositive ? 'positive' : 'negative'}
+              />
+            </div>
+          </div>
+
+        {walletActionError && !deleteWalletTarget ? (
+          <div className="mt-5 rounded-[20px] border border-[rgba(248,113,113,0.25)] bg-[rgba(248,113,113,0.08)] px-4 py-3 text-sm text-[#ffcbcb]">
+            {walletActionError}
+          </div>
+        ) : null}
+        </div>
+      </section>
+
+      <div className="grid items-stretch gap-6 md:grid-cols-[minmax(0,1.08fr)_minmax(300px,0.92fr)] xl:gap-8">
+        <PerformanceBars
+          series={performanceSeries}
+          title="Wallet Performance"
+          description={`${currentWallet?.name ?? 'Selected wallet'} value across the selected range`}
+          apiQuery={{ wallet_id: initialWalletId }}
+        />
+        <AllocationChart
+          holdings={initialHoldings}
+          title="Holdings Allocation"
+          description="Current wallet value by asset"
+        />
       </div>
 
       <section className="space-y-4">
@@ -400,6 +540,50 @@ export function HoldingsPageClient({
           onDelete={(holding) => setDeleteHoldingTarget(holding)}
         />
       </section>
+
+      <ModalShell
+        open={createWalletOpen}
+        onClose={() => {
+          setCreateWalletOpen(false)
+          setNewWalletName('')
+        }}
+        title="New wallet"
+        description="Create a wallet, then add holdings when you're ready."
+        widthClassName="max-w-md"
+      >
+        <form onSubmit={createWallet} className="space-y-5">
+          <div>
+            <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">Wallet name</label>
+            <input
+              value={newWalletName}
+              onChange={(e) => setNewWalletName(e.target.value)}
+              placeholder="Enter wallet name"
+              className="mt-2 w-full"
+              autoFocus
+            />
+          </div>
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setCreateWalletOpen(false)
+                setNewWalletName('')
+              }}
+              className="rounded-2xl border border-fp-border bg-transparent px-5 py-3 text-sm font-medium text-fp-text-secondary transition hover:bg-white/[0.04]"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={busy || !newWalletName.trim()}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl bg-fp-accent px-5 py-3 text-sm font-semibold text-white transition hover:bg-fp-accent-hover disabled:opacity-50"
+            >
+              <PlusIcon />
+              {busy ? 'Creating…' : 'Create wallet'}
+            </button>
+          </div>
+        </form>
+      </ModalShell>
 
       <ModalShell
         open={Boolean(renameId)}

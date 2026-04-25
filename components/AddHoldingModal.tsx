@@ -232,206 +232,158 @@ export function AddHoldingModal({ open, walletId, walletName, onClose, onDone }:
       open={open}
       onClose={onClose}
       title="Add holding"
-      description={
-        walletName ? `Add a position to ${walletName}. Everything you enter here stays inside that wallet.` : 'Add a new position to the selected wallet.'
-      }
-      widthClassName="max-w-2xl"
+      description={walletName ? `Add a position to ${walletName}.` : 'Add a position to the selected wallet.'}
+      widthClassName="max-w-xl"
     >
-      <form onSubmit={submit} className="space-y-6">
-        <div className="rounded-[24px] border border-fp-border bg-white/[0.03] p-2">
-          <div className="grid gap-2 sm:grid-cols-3">
-            {(['crypto', 'stock', 'cash'] as const).map((kind) => {
-              const active = assetType === kind
-              const typeCopy = ASSET_TYPE_COPY[kind]
-              return (
-                <button
-                  key={kind}
-                  type="button"
-                  onClick={() => setAssetType(kind)}
-                  className={`rounded-[20px] px-4 py-3 text-left transition ${
-                    active
-                      ? 'bg-[rgba(139,126,216,0.18)] text-fp-text ring-1 ring-[rgba(139,126,216,0.3)]'
-                      : 'text-fp-muted hover:bg-white/[0.04] hover:text-fp-text'
-                  }`}
-                >
-                  <span className="block text-sm font-semibold">{typeCopy.label}</span>
-                  <span className="mt-1 block text-xs leading-5 opacity-80">{typeCopy.hint}</span>
-                </button>
-              )
-            })}
-          </div>
+      <form onSubmit={submit} className="space-y-5">
+        <div className="grid rounded-[22px] border border-fp-border bg-white/[0.03] p-1 sm:grid-cols-3">
+          {(['crypto', 'stock', 'cash'] as const).map((kind) => {
+            const active = assetType === kind
+            const typeCopy = ASSET_TYPE_COPY[kind]
+            return (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setAssetType(kind)}
+                className={`rounded-[18px] px-4 py-3 text-sm font-semibold transition ${
+                  active
+                    ? 'bg-[rgba(139,126,216,0.2)] text-fp-text ring-1 ring-[rgba(139,126,216,0.34)]'
+                    : 'text-fp-muted hover:bg-white/[0.04] hover:text-fp-text'
+                }`}
+              >
+                {typeCopy.label}
+              </button>
+            )
+          })}
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.9fr)]">
-          <div className="space-y-4">
-            <section className="rounded-[24px] border border-fp-border bg-white/[0.03] p-5">
-              <div className="mb-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">Asset selection</p>
-                <p className="mt-2 text-sm text-fp-muted">{copy.hint}</p>
-              </div>
+        <section className="rounded-[24px] border border-fp-border bg-white/[0.03] p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">Asset selection</p>
+          <div className="relative mt-4">
+            <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">
+              {copy.searchLabel}
+            </label>
+            <input
+              className="mt-2 w-full"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value)
+                setSelected(null)
+                setListOpen(true)
+              }}
+              onFocus={() => setListOpen(true)}
+              placeholder={copy.searchPlaceholder}
+              autoComplete="off"
+            />
 
-              <div className="relative">
-                <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">
-                  {copy.searchLabel}
-                </label>
-                <input
-                  className="mt-2 w-full"
-                  value={query}
-                  onChange={(e) => {
-                    setQuery(e.target.value)
-                    setSelected(null)
-                    setListOpen(true)
-                  }}
-                  onFocus={() => setListOpen(true)}
-                  placeholder={copy.searchPlaceholder}
-                  autoComplete="off"
-                />
-
-                {showList ? (
-                  <div className="absolute inset-x-0 z-10 mt-2 overflow-hidden rounded-[20px] border border-fp-border bg-[#141a24] shadow-[0_22px_50px_rgba(4,8,18,0.48)]">
-                    {searching ? (
-                      <div className="px-4 py-3 text-sm text-fp-muted">Searching…</div>
-                    ) : showNoResults ? (
-                      <div className="px-4 py-3 text-sm text-fp-muted">No matches yet. Try a ticker or a fuller name.</div>
-                    ) : (
-                      <ul className="max-h-64 overflow-auto py-2" role="listbox">
-                        {results.slice(0, 6).map((row) => (
-                          <li key={`${row.symbol}-${row.coingecko_id ?? ''}`}>
-                            <button
-                              type="button"
-                              className="flex w-full items-start justify-between gap-3 px-4 py-3 text-left transition hover:bg-white/[0.05]"
-                              onClick={() => pickRow(row)}
-                            >
-                              <div>
-                                <span className="block text-sm font-semibold text-fp-text">{row.symbol}</span>
-                                <span className="mt-1 block text-sm text-fp-muted">{row.name}</span>
-                              </div>
-                              <span className="rounded-full border border-fp-border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-fp-muted">
-                                {assetType}
-                              </span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="mt-4 rounded-[20px] border border-fp-border bg-[#121722] px-4 py-3">
-                {selected ? (
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">Selected</p>
-                      <p className="mt-2 text-base font-semibold text-fp-text">{selected.symbol}</p>
-                      <p className="mt-1 text-sm text-fp-muted">{selected.name}</p>
-                    </div>
-                    <span className="rounded-full bg-[rgba(74,222,128,0.1)] px-3 py-1 text-xs font-semibold text-fp-positive">
-                      Ready
-                    </span>
-                  </div>
+            {showList ? (
+              <div className="absolute inset-x-0 z-10 mt-2 overflow-hidden rounded-[20px] border border-fp-border bg-[#141a24] shadow-[0_22px_50px_rgba(4,8,18,0.48)]">
+                {searching ? (
+                  <div className="px-4 py-3 text-sm text-fp-muted">Searching…</div>
+                ) : showNoResults ? (
+                  <div className="px-4 py-3 text-sm text-fp-muted">No matches found.</div>
                 ) : (
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">Selection status</p>
-                    <p className="mt-2 text-sm text-fp-muted">
-                      {assetType === 'cash'
-                        ? 'Pick a currency so we know which balance to add.'
-                        : 'Pick an item from the search results to continue.'}
-                    </p>
-                  </div>
+                  <ul className="max-h-64 overflow-auto py-2" role="listbox">
+                    {results.slice(0, 6).map((row) => (
+                      <li key={`${row.symbol}-${row.coingecko_id ?? ''}`}>
+                        <button
+                          type="button"
+                          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-white/[0.05]"
+                          onClick={() => pickRow(row)}
+                        >
+                          <span>
+                            <span className="block text-sm font-semibold text-fp-text">{row.symbol}</span>
+                            <span className="mt-1 block text-sm text-fp-muted">{row.name}</span>
+                          </span>
+                          <span className="rounded-full border border-fp-border px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-fp-muted">
+                            {assetType}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 )}
-              </div>
-            </section>
-          </div>
-
-          <div className="space-y-4">
-            <section className="rounded-[24px] border border-fp-border bg-white/[0.03] p-5">
-              <div className="mb-4">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">Position details</p>
-                <p className="mt-2 text-sm text-fp-muted">
-                  {assetType === 'cash'
-                    ? 'Cash uses a fixed unit price of 1.00, so only the balance and date are required.'
-                    : 'Record the size and average entry for this position.'}
-                </p>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">
-                    {copy.quantityLabel}
-                  </label>
-                  <input
-                    type="number"
-                    step="any"
-                    min="0"
-                    className="mt-2 w-full"
-                    value={quantity}
-                    onChange={(e) => setQuantity(e.target.value)}
-                    placeholder={assetType === 'cash' ? '0.00' : '0'}
-                    required
-                  />
-                </div>
-                {assetType === 'cash' ? (
-                  <div className="rounded-[20px] border border-fp-border bg-[#121722] px-4 py-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">Price handling</p>
-                    <p className="mt-2 text-sm text-fp-text-secondary">Cash balances are stored at a unit price of 1.00.</p>
-                  </div>
-                ) : (
-                  <div>
-                    <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">Avg buy price (USD)</label>
-                    <input
-                      type="number"
-                      step="any"
-                      min="0"
-                      className="mt-2 w-full"
-                      value={avgBuy}
-                      onChange={(e) => setAvgBuy(e.target.value)}
-                      placeholder="0.00"
-                      required
-                    />
-                  </div>
-                )}
-              </div>
-
-              <div className="mt-4">
-                <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">Purchase date</label>
-                <input
-                  type="datetime-local"
-                  className="mt-2 w-full"
-                  value={executedAt}
-                  onChange={(e) => setExecutedAt(e.target.value)}
-                />
-              </div>
-            </section>
-
-            {error ? (
-              <div className="rounded-[20px] border border-[rgba(248,113,113,0.22)] bg-[rgba(248,113,113,0.08)] px-4 py-3 text-sm text-[#ffcbcb]">
-                {error}
               </div>
             ) : null}
           </div>
-        </div>
 
-        <div className="flex flex-col-reverse gap-3 border-t border-fp-border pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-fp-muted">
-            {walletName ? `This holding will be added to ${walletName}.` : 'This holding will be added to the selected wallet.'}
-          </p>
-          <div className="flex flex-col-reverse gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-2xl border border-fp-border bg-transparent px-5 py-3 text-sm font-medium text-fp-text-secondary transition hover:bg-white/[0.04]"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || !canSubmit}
-              className="rounded-2xl bg-fp-accent px-5 py-3 text-sm font-semibold text-white transition hover:bg-fp-accent-hover disabled:opacity-50"
-            >
-              {loading ? 'Saving…' : 'Save holding'}
-            </button>
+          {selected ? (
+            <div className="mt-4 flex items-center justify-between gap-4 rounded-[18px] border border-[rgba(74,222,128,0.16)] bg-[rgba(74,222,128,0.07)] px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-fp-text">{selected.symbol}</p>
+                <p className="truncate text-xs text-fp-muted">{selected.name}</p>
+              </div>
+              <span className="shrink-0 text-xs font-semibold text-fp-positive">Selected</span>
+            </div>
+          ) : null}
+        </section>
+
+        <section className="rounded-[24px] border border-fp-border bg-white/[0.03] p-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">Details</p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">
+                {copy.quantityLabel}
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                className="mt-2 w-full"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                placeholder={assetType === 'cash' ? '0.00' : '0'}
+                required
+              />
+            </div>
+            {assetType === 'cash' ? null : (
+              <div>
+                <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">Avg buy price (USD)</label>
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  className="mt-2 w-full"
+                  value={avgBuy}
+                  onChange={(e) => setAvgBuy(e.target.value)}
+                  placeholder="0.00"
+                  required
+                />
+              </div>
+            )}
+            <div className={assetType === 'cash' ? 'sm:col-span-2' : 'sm:col-span-2'}>
+              <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">Purchase date</label>
+              <input
+                type="datetime-local"
+                className="mt-2 w-full"
+                value={executedAt}
+                onChange={(e) => setExecutedAt(e.target.value)}
+              />
+            </div>
           </div>
+        </section>
+
+        {error ? (
+          <div className="rounded-[20px] border border-[rgba(248,113,113,0.22)] bg-[rgba(248,113,113,0.08)] px-4 py-3 text-sm text-[#ffcbcb]">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="flex flex-col-reverse gap-3 border-t border-fp-border pt-5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-fp-border bg-transparent px-5 py-3 text-sm font-medium text-fp-text-secondary transition hover:bg-white/[0.04]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading || !canSubmit}
+            className="rounded-2xl bg-fp-accent px-5 py-3 text-sm font-semibold text-white transition hover:bg-fp-accent-hover disabled:opacity-50"
+          >
+            {loading ? 'Saving…' : 'Save holding'}
+          </button>
         </div>
       </form>
     </ModalShell>
