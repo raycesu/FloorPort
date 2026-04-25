@@ -137,7 +137,7 @@ export default async function LoginPage() {
                   <circle cx="5" cy="12" r="1.2" fill="currentColor" />
                   <circle cx="5" cy="17" r="1.2" fill="currentColor" />
                 </svg>
-                Track transactions with clean history
+                Multi-wallet holdings management
               </li>
               <li className="inline-flex items-center justify-center gap-3 text-center text-[14px] font-medium leading-snug text-[#a1a1aa]">
                 <svg
@@ -159,7 +159,7 @@ export default async function LoginPage() {
                     fill="currentColor"
                   />
                 </svg>
-                Watchlist insights for stocks and crypto
+                Professional asset allocation insights
               </li>
             </ul>
           </div>

@@ -61,6 +61,17 @@ export function enrichHoldingsWithPrices(
   })
 }
 
+export function enrichHoldingsWithMarketChanges(
+  holdings: Holding[],
+  changesByHoldingId: Record<string, { change_1d?: number; change_7d?: number }>
+): Holding[] {
+  return holdings.map((h) => ({
+    ...h,
+    change_1d: changesByHoldingId[h.id]?.change_1d,
+    change_7d: changesByHoldingId[h.id]?.change_7d,
+  }))
+}
+
 /**
  * Merge holdings that represent the same asset (e.g. same symbol across wallets).
  * Used for portfolio-level views like allocation and combined holdings tables.
@@ -81,6 +92,16 @@ export function combineHoldingsByAsset(holdings: Holding[]): Holding[] {
     const totalCost = rows.reduce((sum, r) => sum + r.quantity * r.avg_buy_price, 0)
     const weightedAvgBuy = totalQuantity > 0 ? totalCost / totalQuantity : 0
     const currentPrice = rows.find((r) => r.current_price != null)?.current_price
+    const weightedCurrentValue = rows.reduce((sum, r) => sum + (r.current_value ?? 0), 0)
+    const aggregateChange = (field: 'change_1d' | 'change_7d') => {
+      const valid = rows.filter(
+        (r) => typeof r[field] === 'number' && Number.isFinite(r[field]) && (r.current_value ?? 0) > 0
+      )
+      if (valid.length === 0) return undefined
+      const totalWeight = valid.reduce((sum, r) => sum + (r.current_value ?? 0), 0)
+      if (totalWeight <= 0) return undefined
+      return valid.reduce((sum, r) => sum + (r[field] ?? 0) * (r.current_value ?? 0), 0) / totalWeight
+    }
 
     const combined: Holding = {
       ...sample,
@@ -92,6 +113,8 @@ export function combineHoldingsByAsset(holdings: Holding[]): Holding[] {
       current_value: undefined,
       pnl: undefined,
       pnl_percent: undefined,
+      change_1d: weightedCurrentValue > 0 ? aggregateChange('change_1d') : undefined,
+      change_7d: weightedCurrentValue > 0 ? aggregateChange('change_7d') : undefined,
     }
     const { value, pnl, pnl_percent } = calcHoldingPnL(combined)
     return {
@@ -118,6 +141,13 @@ export function calcWalletValues(holdings: Holding[]): Record<string, number> {
  * Falls back to current_price when history is unavailable.
  */
 export function calcPortfolioHistorySeries24h(
+  holdings: Holding[],
+  priceHistoryByHoldingId: Record<string, TimePricePoint[]>
+): { timestamp: number; value: number }[] {
+  return calcPortfolioHistorySeries(holdings, priceHistoryByHoldingId)
+}
+
+export function calcPortfolioHistorySeries(
   holdings: Holding[],
   priceHistoryByHoldingId: Record<string, TimePricePoint[]>
 ): { timestamp: number; value: number }[] {

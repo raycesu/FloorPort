@@ -12,8 +12,6 @@ import { useState } from 'react'
 const links = [
   { href: '/dashboard', label: 'Dashboard' },
   { href: '/holdings', label: 'Holdings' },
-  { href: '/transactions', label: 'Transactions' },
-  { href: '/watchlist', label: 'Watchlist' },
 ]
 
 export function Navbar({ email }: { email?: string | null }) {

@@ -29,6 +29,28 @@ export function formatUsd(n: number) {
   return usdFmt.format(n)
 }
 
+/** Adaptive precision for per-unit prices so small values do not collapse to $0.00. */
+export function formatUnitPrice(
+  usdAmount: number,
+  currency: DisplayCurrency,
+  usdToCad: number
+): string {
+  const amount = currency === 'USD' ? usdAmount : usdAmount * usdToCad
+  if (!Number.isFinite(amount)) return '—'
+  const abs = Math.abs(amount)
+  let maxFractionDigits = 2
+  if (abs > 0 && abs < 0.01) maxFractionDigits = 8
+  else if (abs < 1) maxFractionDigits = 6
+  else if (abs < 100) maxFractionDigits = 4
+  const locale = currency === 'USD' ? 'en-US' : 'en-CA'
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: maxFractionDigits,
+  }).format(amount)
+}
+
 export function formatPercent(n: number, opts?: { withPlus?: boolean }) {
   const withPlus = opts?.withPlus ?? true
   const sign = n > 0 && withPlus ? '+' : ''
@@ -40,15 +62,15 @@ export function formatQuantity(n: number) {
   return n.toLocaleString('en-US', { maximumFractionDigits: 8 })
 }
 
-/** Fixed locale + UTC so SSR and browser output match (avoids hydration errors). */
+/** Fixed locale + ET so SSR and browser output match (avoids hydration errors). */
 const executedAtFmt = new Intl.DateTimeFormat('en-US', {
   dateStyle: 'medium',
   timeStyle: 'short',
-  timeZone: 'UTC',
+  timeZone: 'America/New_York',
 })
 
 export function formatExecutedAt(iso: string) {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return '—'
-  return `${executedAtFmt.format(d)} UTC`
+  return `${executedAtFmt.format(d)} ET`
 }

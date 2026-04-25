@@ -19,32 +19,38 @@ export function DashboardHoldings({
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="font-bold text-white" style={{ fontSize: 18 }}>
-          Holdings
-        </h2>
+        <div>
+          <h2 className="font-bold text-white" style={{ fontSize: 18 }}>
+            Holdings
+          </h2>
+          <p className="mt-1 text-[13px]" style={{ color: '#93a0b4' }}>
+            Portfolio-wide positions grouped by asset
+          </p>
+        </div>
         <button
           type="button"
           onClick={() => setOpen(true)}
           disabled={!defaultWalletId}
           className="rounded-lg font-semibold text-white transition-all duration-150 active:scale-[0.97] disabled:opacity-40"
           style={{
-            background: '#7c6fd4',
-            padding: '9px 20px',
+            background: '#8b7ed8',
+            padding: '10px 20px',
             fontSize: 14,
+            boxShadow: '0 12px 24px rgba(139,126,216,0.24)',
           }}
           onMouseEnter={(e) => {
             if (!e.currentTarget.disabled) {
-              ;(e.currentTarget as HTMLButtonElement).style.background = '#8b7ed8'
+              ;(e.currentTarget as HTMLButtonElement).style.background = '#978ae3'
             }
           }}
           onMouseLeave={(e) => {
-            ;(e.currentTarget as HTMLButtonElement).style.background = '#7c6fd4'
+            ;(e.currentTarget as HTMLButtonElement).style.background = '#8b7ed8'
           }}
         >
           Add holding
         </button>
       </div>
-      <HoldingsTable holdings={initialHoldings} showActions={false} showChart />
+      <HoldingsTable holdings={initialHoldings} showActions={false} />
       <AddHoldingModal
         open={open}
         walletId={defaultWalletId}

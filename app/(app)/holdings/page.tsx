@@ -1,7 +1,7 @@
 import { HoldingsPageClient } from './HoldingsPageClient'
-import { calcWalletValues, enrichHoldingsWithPrices } from '@/lib/calculations'
+import { calcWalletValues, enrichHoldingsWithMarketChanges, enrichHoldingsWithPrices } from '@/lib/calculations'
 import { mapRowToHolding, mapRowToWallet } from '@/lib/mappers'
-import { getLivePrices } from '@/lib/prices'
+import { getHoldingChangePercents, getLivePrices } from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
 
 export default async function HoldingsPage({
@@ -38,8 +38,14 @@ export default async function HoldingsPage({
     asset_type: h.asset_type,
     coingecko_id: h.coingecko_id,
   }))
-  const prices = await getLivePrices(keys)
-  const enrichedAll = enrichHoldingsWithPrices(allHoldings, prices)
+  const [prices, changePercents] = await Promise.all([
+    getLivePrices(keys),
+    getHoldingChangePercents(keys),
+  ])
+  const enrichedAll = enrichHoldingsWithMarketChanges(
+    enrichHoldingsWithPrices(allHoldings, prices),
+    changePercents
+  )
   const walletValues = calcWalletValues(enrichedAll)
   const enriched = walletId
     ? enrichedAll.filter((h) => h.wallet_id === walletId)

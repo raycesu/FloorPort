@@ -1,8 +1,9 @@
 'use client'
 
+import { ModalShell } from '@/components/ModalShell'
 import { useDisplayCurrency } from '@/components/CurrencyContext'
-import type { Holding } from '@/types'
 import { formatMoney } from '@/lib/format'
+import type { Holding } from '@/types'
 import { useEffect, useState } from 'react'
 
 type Props = {
@@ -43,18 +44,18 @@ export function EditHoldingModal({ holding, open, onClose, onDone }: Props) {
       const avg = parseFloat(avgBuy)
       const tp = tradePrice.trim() === '' ? null : parseFloat(tradePrice)
       if (!Number.isFinite(qty) || qty < 0 || (!isCash && (!Number.isFinite(avg) || avg < 0))) {
-        setError('Invalid quantity or average')
+        setError('Enter a valid quantity and average buy price.')
         setLoading(false)
         return
       }
+
       const body: Record<string, unknown> = {
         id: h.id,
         quantity: qty,
         avg_buy_price: isCash ? 1 : avg,
       }
-      if (!isCash && tp != null && Number.isFinite(tp) && tp >= 0) {
-        body.trade_price = tp
-      }
+      if (!isCash && tp != null && Number.isFinite(tp) && tp >= 0) body.trade_price = tp
+
       const res = await fetch('/api/holdings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -62,9 +63,10 @@ export function EditHoldingModal({ holding, open, onClose, onDone }: Props) {
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
-        setError(typeof json.error === 'string' ? json.error : 'Update failed')
+        setError(typeof json.error === 'string' ? json.error : 'Update failed.')
         return
       }
+
       onDone()
       onClose()
     } finally {
@@ -73,87 +75,101 @@ export function EditHoldingModal({ holding, open, onClose, onDone }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-xl border border-fp-border bg-fp-surface p-6">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-fp-text">Edit {h.symbol}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1 text-fp-muted hover:bg-fp-page"
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </div>
-        <p className="mt-1 text-xs text-fp-muted">
-          {isCash
-            ? 'Update your cash balance. Cost basis is not tracked for cash.'
-            : 'If quantity changes, add a trade price for the bought/sold amount (optional — otherwise avg buy is used).'}
-        </p>
-        <form onSubmit={submit} className="mt-4 space-y-3">
-          <div>
-            <label className="text-xs text-fp-muted">{isCash ? 'Balance' : 'Quantity'}</label>
-            <input
-              type="number"
-              step="any"
-              min="0"
-              className="mt-0.5 w-full"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              required
-            />
-          </div>
-          {isCash ? null : (
-            <>
+    <ModalShell
+      open={open}
+      onClose={onClose}
+      title={`Edit ${h.symbol}`}
+      description={
+        isCash
+          ? 'Update the wallet balance for this cash position.'
+          : 'Adjust the current quantity and cost basis for this holding.'
+      }
+      widthClassName="max-w-xl"
+    >
+      <form onSubmit={submit} className="space-y-5">
+        <section className="rounded-[24px] border border-fp-border bg-white/[0.03] p-5">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">
+                {isCash ? 'Balance' : 'Quantity'}
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                className="mt-2 w-full"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                required
+              />
+            </div>
+
+            {isCash ? (
+              <div className="rounded-[20px] border border-fp-border bg-[#121722] px-4 py-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-fp-muted">Price handling</p>
+                <p className="mt-2 text-sm text-fp-text-secondary">Cash balances always use a unit price of 1.00.</p>
+              </div>
+            ) : (
               <div>
-                <label className="text-xs text-fp-muted">Avg buy price (USD)</label>
+                <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">Avg buy price (USD)</label>
                 <input
                   type="number"
                   step="any"
                   min="0"
-                  className="mt-0.5 w-full"
+                  className="mt-2 w-full"
                   value={avgBuy}
                   onChange={(e) => setAvgBuy(e.target.value)}
                   required
                 />
-                <p className="mt-1 text-xs text-fp-muted">
-                  ≈ {formatMoney(parseFloat(avgBuy) || 0, currency, usdToCad)} displayed
+                <p className="mt-2 text-xs text-fp-muted">
+                  Displayed as {formatMoney(parseFloat(avgBuy) || 0, currency, usdToCad)} in your selected currency.
                 </p>
               </div>
-              <div>
-                <label className="text-xs text-fp-muted">Trade price for delta (optional)</label>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  className="mt-0.5 w-full"
-                  value={tradePrice}
-                  onChange={(e) => setTradePrice(e.target.value)}
-                  placeholder="Per unit when quantity changes"
-                />
-              </div>
-            </>
-          )}
-          {error ? <p className="text-sm text-fp-negative">{error}</p> : null}
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-fp-border bg-transparent px-5 py-2.5 text-sm text-fp-muted hover:bg-fp-page"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-lg bg-fp-accent px-5 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {loading ? 'Saving…' : 'Save'}
-            </button>
+            )}
           </div>
-        </form>
-      </div>
-    </div>
+
+          {isCash ? null : (
+            <div className="mt-4">
+              <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">Trade price for quantity change (optional)</label>
+              <input
+                type="number"
+                step="any"
+                min="0"
+                className="mt-2 w-full"
+                value={tradePrice}
+                onChange={(e) => setTradePrice(e.target.value)}
+                placeholder="Per unit if you bought or sold at a different price"
+              />
+              <p className="mt-2 text-xs text-fp-muted">
+                Leave blank to use the average buy price when adjusting the position.
+              </p>
+            </div>
+          )}
+        </section>
+
+        {error ? (
+          <div className="rounded-[20px] border border-[rgba(248,113,113,0.22)] bg-[rgba(248,113,113,0.08)] px-4 py-3 text-sm text-[#ffcbcb]">
+            {error}
+          </div>
+        ) : null}
+
+        <div className="flex flex-col-reverse gap-3 border-t border-fp-border pt-5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-2xl border border-fp-border bg-transparent px-5 py-3 text-sm font-medium text-fp-text-secondary transition hover:bg-white/[0.04]"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-2xl bg-fp-accent px-5 py-3 text-sm font-semibold text-white transition hover:bg-fp-accent-hover disabled:opacity-50"
+          >
+            {loading ? 'Saving…' : 'Save changes'}
+          </button>
+        </div>
+      </form>
+    </ModalShell>
   )
 }

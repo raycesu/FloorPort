@@ -1,4 +1,5 @@
 import { getFiatUsdRates } from '@/lib/fx'
+import type { PerformanceRange } from '@/types'
 
 const COINGECKO_IDS: Record<string, string> = {
   BTC: 'bitcoin',
@@ -357,6 +358,44 @@ export type TimePricePoint = {
   price: number
 }
 
+const RANGE_CONFIG: Record<
+  Lowercase<PerformanceRange>,
+  { durationMs: number; intervalMinutes: number; label: PerformanceRange }
+> = {
+  '24h': { durationMs: 24 * 60 * 60 * 1000, intervalMinutes: 15, label: '24H' },
+  '7d': { durationMs: 7 * 24 * 60 * 60 * 1000, intervalMinutes: 120, label: '7D' },
+  '1m': { durationMs: 30 * 24 * 60 * 60 * 1000, intervalMinutes: 24 * 60, label: '1M' },
+  '3m': { durationMs: 90 * 24 * 60 * 60 * 1000, intervalMinutes: 24 * 60, label: '3M' },
+  '1y': { durationMs: 365 * 24 * 60 * 60 * 1000, intervalMinutes: 7 * 24 * 60, label: '1Y' },
+}
+
+type SupportedRangeKey = keyof typeof RANGE_CONFIG
+
+function clampCoinGeckoDays(range: SupportedRangeKey): number {
+  if (range === '24h') return 1
+  if (range === '7d') return 7
+  if (range === '1m') return 30
+  if (range === '3m') return 90
+  return 365
+}
+
+function mapRangeToStockRequest(range: SupportedRangeKey): {
+  interval: string
+  outputsize: number
+  revalidateSeconds: number
+} {
+  if (range === '24h') return { interval: '15min', outputsize: 96, revalidateSeconds: 120 }
+  if (range === '7d') return { interval: '2h', outputsize: 84, revalidateSeconds: 300 }
+  if (range === '1m') return { interval: '1day', outputsize: 40, revalidateSeconds: 600 }
+  if (range === '3m') return { interval: '1day', outputsize: 120, revalidateSeconds: 900 }
+  return { interval: '1week', outputsize: 60, revalidateSeconds: 1800 }
+}
+
+export function toRangeKey(range: PerformanceRange | string): SupportedRangeKey {
+  const normalized = String(range).trim().toLowerCase() as SupportedRangeKey
+  return normalized in RANGE_CONFIG ? normalized : '24h'
+}
+
 /** USD price per unit of the holding, keyed by holding id */
 export async function getLivePrices(items: PriceKey[]): Promise<Record<string, number>> {
   const fiatRates = await getFiatUsdRates()
@@ -479,27 +518,29 @@ function normalizeToBucketPoints(
   return out
 }
 
-function makeBucketTimestamps(intervalMinutes: number): number[] {
+function makeBucketTimestamps(durationMs: number, intervalMinutes: number): number[] {
   const now = Date.now()
   const intervalMs = intervalMinutes * 60 * 1000
   const alignedNow = Math.floor(now / intervalMs) * intervalMs
-  const start = alignedNow - 24 * 60 * 60 * 1000
+  const start = alignedNow - durationMs
   const out: number[] = []
   for (let t = start; t <= alignedNow; t += intervalMs) out.push(t)
   return out
 }
 
-async function getCryptoHistory24hByCoingeckoIds(
+async function getCryptoHistoryByCoingeckoIds(
   ids: string[],
-  bucketTimestamps: number[]
+  bucketTimestamps: number[],
+  range: SupportedRangeKey
 ): Promise<Record<string, TimePricePoint[]>> {
   const unique = [...new Set(ids.filter(Boolean))]
   if (unique.length === 0) return {}
+  const days = clampCoinGeckoDays(range)
   const pairs = await Promise.all(
     unique.map(async (id) => {
       try {
         const res = await fetch(
-          `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=1`,
+          `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}`,
           { next: { revalidate: 60 } }
         )
         if (!res.ok) return [id, []] as const
@@ -508,7 +549,7 @@ async function getCryptoHistory24hByCoingeckoIds(
           data.prices?.map(([timestamp, price]) => ({ timestamp, price })) ?? []
         return [id, normalizeToBucketPoints(points, bucketTimestamps)] as const
       } catch (e) {
-        console.error(`Failed 24h history for ${id}`, e)
+        console.error(`Failed ${range} history for ${id}`, e)
         return [id, []] as const
       }
     })
@@ -516,13 +557,20 @@ async function getCryptoHistory24hByCoingeckoIds(
   return Object.fromEntries(pairs)
 }
 
-async function getStockHistory24h(
+async function getStockHistoryByRange(
   symbols: string[],
-  bucketTimestamps: number[]
+  bucketTimestamps: number[],
+  range: SupportedRangeKey
 ): Promise<Record<string, TimePricePoint[]>> {
   const unique = normalizeStockSymbols(symbols)
   if (unique.length === 0) return {}
-  const seriesBySymbol = await getStockTimeSeries(unique, '15min', 96, 120)
+  const stockRequest = mapRangeToStockRequest(range)
+  const seriesBySymbol = await getStockTimeSeries(
+    unique,
+    stockRequest.interval,
+    stockRequest.outputsize,
+    stockRequest.revalidateSeconds
+  )
   const out: Record<string, TimePricePoint[]> = {}
   for (const symbol of unique) {
     const series = seriesBySymbol[symbol]?.values ?? []
@@ -543,12 +591,13 @@ async function getStockHistory24h(
   return out
 }
 
-/** 24h normalized price series per holding id, bucketed at intervalMinutes. */
-export async function getLivePriceHistory24hByHoldingId(
+export async function getLivePriceHistoryByHoldingId(
   items: PriceKey[],
-  intervalMinutes = 15
+  range: PerformanceRange | string
 ): Promise<Record<string, TimePricePoint[]>> {
-  const buckets = makeBucketTimestamps(intervalMinutes)
+  const rangeKey = toRangeKey(range)
+  const config = RANGE_CONFIG[rangeKey]
+  const buckets = makeBucketTimestamps(config.durationMs, config.intervalMinutes)
   const cryptoByCoingecko = new Map<string, string[]>()
   const legacyCryptoSymbols: string[] = []
   const stockSymbols: string[] = []
@@ -570,14 +619,15 @@ export async function getLivePriceHistory24hByHoldingId(
   }
 
   const [cgSeries, legacyCryptoSeries, stockSeries] = await Promise.all([
-    getCryptoHistory24hByCoingeckoIds([...cryptoByCoingecko.keys()], buckets),
-    getCryptoHistory24hByCoingeckoIds(
+    getCryptoHistoryByCoingeckoIds([...cryptoByCoingecko.keys()], buckets, rangeKey),
+    getCryptoHistoryByCoingeckoIds(
       [...new Set(legacyCryptoSymbols)]
         .map((symbol) => getCoinGeckoId(symbol))
         .filter((id): id is string => Boolean(id)),
-      buckets
+      buckets,
+      rangeKey
     ),
-    getStockHistory24h(stockSymbols, buckets),
+    getStockHistoryByRange(stockSymbols, buckets, rangeKey),
   ])
 
   const out: Record<string, TimePricePoint[]> = {}
@@ -595,6 +645,46 @@ export async function getLivePriceHistory24hByHoldingId(
     const legacyId = getCoinGeckoId(h.symbol)
     out[h.id] = legacyId ? legacyCryptoSeries[legacyId] ?? [] : []
   }
+  return out
+}
+
+/** 24h normalized price series per holding id, preserved for backwards compatibility. */
+export async function getLivePriceHistory24hByHoldingId(
+  items: PriceKey[]
+): Promise<Record<string, TimePricePoint[]>> {
+  return getLivePriceHistoryByHoldingId(items, '24H')
+}
+
+export async function getHoldingChangePercents(
+  items: PriceKey[]
+): Promise<Record<string, { change_1d?: number; change_7d?: number }>> {
+  const change1dBySymbol = await getLiveChangePercent(items)
+  const historyByHoldingId = await getLivePriceHistoryByHoldingId(items, '7D')
+  const out: Record<string, { change_1d?: number; change_7d?: number }> = {}
+
+  for (const item of items) {
+    if (item.asset_type === 'cash') {
+      out[item.id] = {}
+      continue
+    }
+
+    const symbolKey = item.symbol.toUpperCase()
+    const series = historyByHoldingId[item.id] ?? []
+    let change7d: number | undefined
+    if (series.length >= 2) {
+      const first = series[0]?.price
+      const last = series[series.length - 1]?.price
+      if (first && last && Number.isFinite(first) && Number.isFinite(last) && first > 0) {
+        change7d = ((last - first) / first) * 100
+      }
+    }
+
+    out[item.id] = {
+      change_1d: change1dBySymbol[symbolKey],
+      change_7d: change7d,
+    }
+  }
+
   return out
 }
 

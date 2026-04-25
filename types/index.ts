@@ -2,6 +2,8 @@ export type AssetType = 'crypto' | 'stock' | 'cash'
 
 export type DisplayCurrency = 'USD' | 'CAD'
 
+export type PerformanceRange = '24H' | '7D' | '1M' | '3M' | '1Y'
+
 export type Wallet = {
   id: string
   user_id: string
@@ -24,6 +26,8 @@ export type Holding = {
   current_value?: number
   pnl?: number
   pnl_percent?: number
+  change_1d?: number
+  change_7d?: number
 }
 
 export type Transaction = {

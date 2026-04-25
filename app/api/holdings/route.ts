@@ -60,7 +60,6 @@ export async function POST(request: NextRequest) {
     body.coingecko_id != null && String(body.coingecko_id).trim() !== ''
       ? String(body.coingecko_id).trim()
       : null
-  const executed_at = body.executed_at ? String(body.executed_at) : new Date().toISOString()
 
   if (!wallet_id) {
     return NextResponse.json({ error: 'wallet_id is required' }, { status: 400 })
@@ -120,22 +119,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 })
   }
 
-  const { error: txErr } = await supabase.from('transactions').insert({
-    user_id: user.id,
-    holding_id: holding.id,
-    symbol,
-    asset_type,
-    type: 'buy',
-    quantity,
-    price: avg_buy_price,
-    executed_at,
-  })
-
-  if (txErr) {
-    await supabase.from('holdings').delete().eq('id', holding.id)
-    return NextResponse.json({ error: txErr.message }, { status: 500 })
-  }
-
   return NextResponse.json(holding)
 }
 
@@ -158,7 +141,6 @@ export async function PUT(request: NextRequest) {
   const id = String(body.id ?? '')
   const newQty = parseNum(body.quantity)
   const newAvg = parseNum(body.avg_buy_price)
-  const tradePrice = parseNum(body.trade_price)
 
   if (!id || newQty == null || newQty <= 0 || newAvg == null || newAvg < 0) {
     return NextResponse.json(
@@ -175,26 +157,6 @@ export async function PUT(request: NextRequest) {
 
   if (fetchErr || !existing) {
     return NextResponse.json({ error: 'Holding not found' }, { status: 404 })
-  }
-
-  const oldQty = Number(existing.quantity)
-  const delta = newQty - oldQty
-
-  if (delta !== 0) {
-    const price =
-      tradePrice != null && tradePrice >= 0 ? tradePrice : delta > 0 ? newAvg : newAvg
-    const { error: txErr } = await supabase.from('transactions').insert({
-      user_id: user.id,
-      holding_id: id,
-      symbol: existing.symbol,
-      asset_type: existing.asset_type,
-      type: delta > 0 ? 'buy' : 'sell',
-      quantity: Math.abs(delta),
-      price,
-    })
-    if (txErr) {
-      return NextResponse.json({ error: txErr.message }, { status: 500 })
-    }
   }
 
   const { data: updated, error: upErr } = await supabase

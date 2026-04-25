@@ -39,25 +39,26 @@ export function PortfolioSummary({ summary }: { summary: Summary }) {
   ]
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
       {cards.map((c) => (
         <div
           key={c.label}
-          className="rounded-[14px] px-6 py-5 transition-all duration-200"
+          className="rounded-[22px] px-6 py-5 transition-all duration-200"
           style={{
-            background: '#18181b',
-            border: '1px solid rgba(255,255,255,0.07)',
+            background: '#161b24',
+            border: '1px solid rgba(159,174,197,0.16)',
+            boxShadow: '0 18px 40px rgba(3,8,20,0.18)',
           }}
           onMouseEnter={(e) => {
-            ;(e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(124,111,212,0.3)'
+            ;(e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(139,126,216,0.36)'
           }}
           onMouseLeave={(e) => {
-            ;(e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.07)'
+            ;(e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(159,174,197,0.16)'
           }}
         >
           <p
             className="font-medium uppercase tracking-[0.08em]"
-            style={{ fontSize: '11px', color: '#52525b' }}
+            style={{ fontSize: '11px', color: '#93a0b4' }}
           >
             {c.label}
           </p>

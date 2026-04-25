@@ -1,13 +1,11 @@
 # FloorPort
 
-A personal investment portfolio tracker built with Next.js and Supabase. Track your holdings, log transactions, monitor watchlists, and visualize portfolio performance — all in one place.
+A personal investment portfolio tracker built with Next.js and Supabase. Track your holdings and visualize portfolio performance in one place.
 
 ## Features
 
 - **Dashboard** — Portfolio summary with allocation chart and performance overview
 - **Holdings** — Track assets across multiple wallets with real-time price data
-- **Transactions** — Log buy/sell transactions and view history
-- **Watchlist** — Monitor assets you're interested in
 - **Multi-currency support** — View portfolio value in your preferred currency
 - **Authentication** — Secure login via Supabase Auth
 
@@ -77,9 +75,7 @@ app/
 ├── (app)/              # Authenticated app routes
 │   ├── dashboard/      # Portfolio overview
 │   ├── holdings/       # Asset holdings
-│   ├── transactions/   # Transaction history
-│   └── watchlist/      # Watchlist
-├── api/                # API routes (prices, holdings, transactions, etc.)
+├── api/                # API routes (prices, holdings, profiles, etc.)
 ├── login/              # Auth page
 components/             # Reusable UI components
 lib/                    # Utilities (calculations, formatting, FX, price fetching)

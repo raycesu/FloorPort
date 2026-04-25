@@ -4,12 +4,13 @@ import { PerformanceBars } from '@/components/PerformanceBars'
 import { PortfolioSummary } from '@/components/PortfolioSummary'
 import {
   combineHoldingsByAsset,
-  calcPortfolioHistorySeries24h,
+  calcPortfolioHistorySeries,
   calcPortfolioSummary,
+  enrichHoldingsWithMarketChanges,
   enrichHoldingsWithPrices,
 } from '@/lib/calculations'
 import { mapRowToHolding } from '@/lib/mappers'
-import { getLivePriceHistory24hByHoldingId, getLivePrices } from '@/lib/prices'
+import { getHoldingChangePercents, getLivePriceHistoryByHoldingId, getLivePrices } from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
 
 function getGreeting() {
@@ -46,37 +47,41 @@ export default async function DashboardPage() {
     asset_type: h.asset_type,
     coingecko_id: h.coingecko_id,
   }))
-  const [prices, historyByHoldingId] = await Promise.all([
+  const [prices, changePercents, historyByHoldingId] = await Promise.all([
     getLivePrices(keys),
-    getLivePriceHistory24hByHoldingId(keys, 15),
+    getHoldingChangePercents(keys),
+    getLivePriceHistoryByHoldingId(keys, '24H'),
   ])
-  const enriched = enrichHoldingsWithPrices(holdings, prices)
+  const enriched = enrichHoldingsWithMarketChanges(
+    enrichHoldingsWithPrices(holdings, prices),
+    changePercents
+  )
   const combined = combineHoldingsByAsset(enriched)
   const summary = calcPortfolioSummary(enriched)
-  const performanceSeries = calcPortfolioHistorySeries24h(enriched, historyByHoldingId)
+  const performanceSeries = calcPortfolioHistorySeries(enriched, historyByHoldingId)
   const defaultWalletId = walletRows?.[0]?.id ? String(walletRows[0].id) : ''
 
   const firstName = user?.email?.split('@')[0] ?? 'there'
   const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1)
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       {/* Greeting */}
       <div>
         <h1
           className="font-semibold"
-          style={{ fontSize: '22px', color: '#e4e4e7' }}
+          style={{ fontSize: '24px', color: '#f5f7fb' }}
         >
           {getGreeting()}, {displayName}
         </h1>
-        <p className="mt-1 text-sm" style={{ color: '#71717a' }}>
+        <p className="mt-1 text-sm" style={{ color: '#93a0b4' }}>
           {formatTodayDate()}
         </p>
       </div>
 
       <PortfolioSummary summary={summary} />
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-5 xl:grid-cols-[1.02fr_1.18fr]">
         <AllocationChart holdings={combined} />
         <PerformanceBars series={performanceSeries} />
       </div>
