@@ -12,6 +12,7 @@ import {
 import { mapRowToHolding } from '@/lib/mappers'
 import { getHoldingChangePercents, getLivePriceHistoryByHoldingId, getLivePrices } from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
+import { redirect } from 'next/navigation'
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -35,9 +36,13 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
+  if (!user) {
+    redirect('/login')
+  }
+
   const [{ data: rows }, { data: walletRows }] = await Promise.all([
     supabase.from('holdings').select('*').order('added_at', { ascending: false }),
-    supabase.from('wallets').select('id').eq('user_id', user!.id).order('created_at', { ascending: true }).limit(1),
+    supabase.from('wallets').select('id').eq('user_id', user.id).order('created_at', { ascending: true }).limit(1),
   ])
 
   const holdings = (rows ?? []).map((r) => mapRowToHolding(r as Record<string, unknown>))
