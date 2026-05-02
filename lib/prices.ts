@@ -18,7 +18,12 @@ const TWELVE_DATA_HISTORY_CACHE_TTL_MS = 3 * 60 * 1000
 const TWELVE_DATA_CACHE_MAX_ENTRIES = 350
 
 const COINGECKO_HISTORY_CACHE_TTL_MS = 60 * 1000
-const COINGECKO_HISTORY_CONCURRENCY = 4
+const DEFAULT_COINGECKO_HISTORY_CONCURRENCY = 2
+const DEFAULT_COINGECKO_RETRY_ATTEMPTS = 3
+const DEFAULT_COINGECKO_MIN_REQUEST_INTERVAL_MS = 250
+const COINGECKO_RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504])
+const COINGECKO_LOG_THROTTLE_MS = 30 * 1000
+const COINGECKO_METRIC_WINDOW_MS = 60 * 1000
 
 type CacheEntry<T> = {
   expiresAt: number
@@ -30,6 +35,143 @@ const twelveDataInFlight = new Map<string, Promise<unknown>>()
 
 function sleep(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+function getPositiveIntFromEnv(name: string, fallback: number): number {
+  const raw = process.env[name]
+  if (!raw) return fallback
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback
+  return parsed
+}
+
+const COINGECKO_HISTORY_CONCURRENCY = getPositiveIntFromEnv(
+  'COINGECKO_HISTORY_CONCURRENCY',
+  DEFAULT_COINGECKO_HISTORY_CONCURRENCY
+)
+const COINGECKO_RETRY_ATTEMPTS = getPositiveIntFromEnv(
+  'COINGECKO_RETRY_ATTEMPTS',
+  DEFAULT_COINGECKO_RETRY_ATTEMPTS
+)
+const COINGECKO_MIN_REQUEST_INTERVAL_MS = getPositiveIntFromEnv(
+  'COINGECKO_MIN_REQUEST_INTERVAL_MS',
+  DEFAULT_COINGECKO_MIN_REQUEST_INTERVAL_MS
+)
+
+let nextCoinGeckoRequestAt = 0
+let coinGeckoMetricWindowStart = Date.now()
+let coinGeckoRateLimitCount = 0
+let coinGeckoFallbackCount = 0
+const coinGeckoWarnState = new Map<string, number>()
+
+function warnCoinGeckoThrottled(key: string, message: string) {
+  const now = Date.now()
+  const prev = coinGeckoWarnState.get(key) ?? 0
+  if (now - prev < COINGECKO_LOG_THROTTLE_MS) return
+  coinGeckoWarnState.set(key, now)
+  console.warn(message)
+}
+
+function flushCoinGeckoMetricsWindowIfNeeded(now: number) {
+  if (now - coinGeckoMetricWindowStart < COINGECKO_METRIC_WINDOW_MS) return
+  const elapsedSec = Math.max(1, Math.round((now - coinGeckoMetricWindowStart) / 1000))
+  if (coinGeckoRateLimitCount > 0 || coinGeckoFallbackCount > 0) {
+    console.warn(
+      `CoinGecko summary (${elapsedSec}s): rateLimit=${coinGeckoRateLimitCount}, staleFallback=${coinGeckoFallbackCount}`
+    )
+  }
+  coinGeckoMetricWindowStart = now
+  coinGeckoRateLimitCount = 0
+  coinGeckoFallbackCount = 0
+}
+
+function noteCoinGeckoRateLimit() {
+  const now = Date.now()
+  flushCoinGeckoMetricsWindowIfNeeded(now)
+  coinGeckoRateLimitCount += 1
+}
+
+function noteCoinGeckoFallbackServed() {
+  const now = Date.now()
+  flushCoinGeckoMetricsWindowIfNeeded(now)
+  coinGeckoFallbackCount += 1
+}
+
+function parseRetryAfterMs(header: string | null): number | null {
+  if (!header) return null
+  const sec = Number.parseInt(header, 10)
+  if (Number.isFinite(sec) && sec > 0) return Math.min(sec * 1000, 60_000)
+  return null
+}
+
+function computeCoinGeckoBackoffMs(attempt: number, retryAfterMs: number | null): number {
+  if (retryAfterMs != null) return retryAfterMs
+  const base = Math.min(400 * 2 ** attempt, 10_000)
+  return base + Math.floor(Math.random() * 500)
+}
+
+async function waitForCoinGeckoRequestSlot() {
+  const now = Date.now()
+  const waitMs = Math.max(0, nextCoinGeckoRequestAt - now)
+  if (waitMs > 0) await sleep(waitMs)
+  nextCoinGeckoRequestAt = Date.now() + COINGECKO_MIN_REQUEST_INTERVAL_MS
+}
+
+type CoinGeckoFetchResult<T> = {
+  data: T | null
+  status: number | null
+  retries: number
+}
+
+async function fetchCoinGeckoJson<T>(
+  url: string,
+  revalidateSeconds: number,
+  context: string,
+  maxAttempts = COINGECKO_RETRY_ATTEMPTS
+): Promise<CoinGeckoFetchResult<T>> {
+  let attempt = 0
+  while (attempt < Math.max(1, maxAttempts)) {
+    await waitForCoinGeckoRequestSlot()
+    try {
+      const res = await fetch(url, { next: { revalidate: revalidateSeconds } })
+      if (res.ok) {
+        const data = (await res.json().catch(() => null)) as T | null
+        if (data == null) {
+          warnCoinGeckoThrottled(`${context}:invalid-json`, `CoinGecko invalid JSON for ${context}`)
+          return { data: null, status: res.status, retries: attempt }
+        }
+        return { data, status: res.status, retries: attempt }
+      }
+
+      const status = res.status
+      const retryAfterMs = parseRetryAfterMs(res.headers.get('Retry-After'))
+      const retryable = COINGECKO_RETRYABLE_STATUSES.has(status)
+      if (status === 429) noteCoinGeckoRateLimit()
+
+      if (!retryable || attempt >= Math.max(1, maxAttempts) - 1) {
+        warnCoinGeckoThrottled(
+          `${context}:status:${status}`,
+          `CoinGecko request failed for ${context}: status=${status}, retries=${attempt}`
+        )
+        return { data: null, status, retries: attempt }
+      }
+
+      await sleep(computeCoinGeckoBackoffMs(attempt, retryAfterMs))
+      attempt += 1
+    } catch (error) {
+      if (attempt >= Math.max(1, maxAttempts) - 1) {
+        warnCoinGeckoThrottled(
+          `${context}:network`,
+          `CoinGecko network failure for ${context} after ${attempt} retries`
+        )
+        console.warn(error)
+        return { data: null, status: null, retries: attempt }
+      }
+      await sleep(computeCoinGeckoBackoffMs(attempt, null))
+      attempt += 1
+    }
+  }
+  return { data: null, status: null, retries: Math.max(0, maxAttempts - 1) }
 }
 
 function touchTwelveDataCacheLimit() {
@@ -261,12 +403,13 @@ export function getCoinGeckoId(symbol: string): string | undefined {
 export async function getCryptoPricesByCoingeckoIds(ids: string[]): Promise<Record<string, number>> {
   const unique = [...new Set(ids.filter(Boolean))]
   if (unique.length === 0) return {}
-  const res = await fetch(
+  const request = await fetchCoinGeckoJson<Record<string, { usd?: number }>>(
     `https://api.coingecko.com/api/v3/simple/price?ids=${unique.join(',')}&vs_currencies=usd`,
-    { next: { revalidate: 60 } }
+    60,
+    `simple_price(ids=${unique.length})`
   )
-  if (!res.ok) return {}
-  const data = (await res.json()) as Record<string, { usd?: number }>
+  const data = request.data
+  if (!data) return {}
   const result: Record<string, number> = {}
   unique.forEach((id) => {
     if (data[id]?.usd != null) result[id] = data[id].usd!
@@ -278,12 +421,13 @@ export async function getCryptoPrices(symbols: string[]): Promise<Record<string,
   const upper = symbols.map((s) => s.toUpperCase())
   const ids = upper.map((s) => COINGECKO_IDS[s]).filter(Boolean).join(',')
   if (!ids) return {}
-  const res = await fetch(
+  const request = await fetchCoinGeckoJson<Record<string, { usd?: number }>>(
     `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`,
-    { next: { revalidate: 60 } }
+    60,
+    `simple_price(symbols=${upper.length})`
   )
-  if (!res.ok) return {}
-  const data = (await res.json()) as Record<string, { usd?: number }>
+  const data = request.data
+  if (!data) return {}
   const result: Record<string, number> = {}
   upper.forEach((symbol) => {
     const id = COINGECKO_IDS[symbol]
@@ -298,15 +442,13 @@ export async function getCryptoQuotes(symbols: string[]): Promise<Record<string,
   const upper = symbols.map((s) => s.toUpperCase())
   const ids = upper.map((s) => COINGECKO_IDS[s]).filter(Boolean).join(',')
   if (!ids) return {}
-  const res = await fetch(
+  const request = await fetchCoinGeckoJson<Record<string, { usd?: number; usd_24h_change?: number }>>(
     `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`,
-    { next: { revalidate: 60 } }
+    60,
+    `simple_price_quotes(symbols=${upper.length})`
   )
-  if (!res.ok) return {}
-  const data = (await res.json()) as Record<
-    string,
-    { usd?: number; usd_24h_change?: number }
-  >
+  const data = request.data
+  if (!data) return {}
   const result: Record<string, CryptoQuote> = {}
   upper.forEach((symbol) => {
     const id = COINGECKO_IDS[symbol]
@@ -325,12 +467,13 @@ export async function getCryptoQuotesByCoingeckoIds(
 ): Promise<Record<string, CryptoQuote>> {
   const ids = [...new Set(idBySymbol.values())]
   if (ids.length === 0) return {}
-  const res = await fetch(
+  const request = await fetchCoinGeckoJson<Record<string, { usd?: number; usd_24h_change?: number }>>(
     `https://api.coingecko.com/api/v3/simple/price?ids=${ids.join(',')}&vs_currencies=usd&include_24hr_change=true`,
-    { next: { revalidate: 60 } }
+    60,
+    `simple_price_quotes(ids=${ids.length})`
   )
-  if (!res.ok) return {}
-  const data = (await res.json()) as Record<string, { usd?: number; usd_24h_change?: number }>
+  const data = request.data
+  if (!data) return {}
   const result: Record<string, CryptoQuote> = {}
   idBySymbol.forEach((cgId, symbol) => {
     if (data[cgId]?.usd != null) {
@@ -370,7 +513,15 @@ export type TimePricePoint = {
   price: number
 }
 
-const coinGeckoHistoryCache = new Map<string, CacheEntry<TimePricePoint[]>>()
+type CoinGeckoHistoryCacheEntry = {
+  expiresAt: number
+  value: TimePricePoint[]
+  fetchedAt: number
+  lastStatus: number | null
+  isStale: boolean
+}
+
+const coinGeckoHistoryCache = new Map<string, CoinGeckoHistoryCacheEntry>()
 const coinGeckoHistoryInFlight = new Map<string, Promise<TimePricePoint[]>>()
 
 const RANGE_CONFIG: Record<
@@ -545,19 +696,52 @@ function makeBucketTimestamps(durationMs: number, intervalMinutes: number): numb
 
 async function withCoinGeckoHistoryCache(
   key: string,
-  producer: () => Promise<TimePricePoint[]>
+  producer: () => Promise<{ points: TimePricePoint[]; status: number | null }>
 ): Promise<TimePricePoint[]> {
   const now = Date.now()
   const cached = coinGeckoHistoryCache.get(key)
-  if (cached && cached.expiresAt > now) return cached.value
+  if (cached && cached.expiresAt > now && cached.value.length > 0) return cached.value
 
   const active = coinGeckoHistoryInFlight.get(key)
   if (active) return active
 
   const next = producer()
-    .then((value) => {
-      coinGeckoHistoryCache.set(key, { value, expiresAt: Date.now() + COINGECKO_HISTORY_CACHE_TTL_MS })
-      return value
+    .then(({ points, status }) => {
+      const existing = coinGeckoHistoryCache.get(key)
+      if (points.length > 0) {
+        coinGeckoHistoryCache.set(key, {
+          value: points,
+          expiresAt: Date.now() + COINGECKO_HISTORY_CACHE_TTL_MS,
+          fetchedAt: Date.now(),
+          lastStatus: status,
+          isStale: false,
+        })
+        return points
+      }
+
+      if (existing?.value?.length) {
+        noteCoinGeckoFallbackServed()
+        warnCoinGeckoThrottled(
+          `${key}:stale-fallback`,
+          `CoinGecko stale fallback served for ${key} (status=${status ?? 'network'})`
+        )
+        coinGeckoHistoryCache.set(key, {
+          ...existing,
+          expiresAt: Date.now() + COINGECKO_HISTORY_CACHE_TTL_MS,
+          lastStatus: status,
+          isStale: true,
+        })
+        return existing.value
+      }
+
+      coinGeckoHistoryCache.set(key, {
+        value: [],
+        expiresAt: Date.now() + Math.min(15_000, COINGECKO_HISTORY_CACHE_TTL_MS),
+        fetchedAt: Date.now(),
+        lastStatus: status,
+        isStale: true,
+      })
+      return []
     })
     .finally(() => {
       coinGeckoHistoryInFlight.delete(key)
@@ -596,33 +780,17 @@ async function fetchOneCoinGeckoMarketChart(
 
   const series = await withCoinGeckoHistoryCache(cacheKey, async () => {
     const url = `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}`
-
-    const doFetch = () => fetch(url, { next: { revalidate: 60 } })
-
-    let res = await doFetch()
-    if (res.status === 429) {
-      const retryAfter = res.headers.get('Retry-After')
-      const sec = retryAfter ? parseInt(retryAfter, 10) : NaN
-      const waitMs = Number.isFinite(sec)
-        ? Math.min(Math.max(sec, 1) * 1000, 60_000)
-        : 600 + Math.random() * 600
-      await sleep(waitMs)
-      res = await doFetch()
-    }
-
-    if (!res.ok) {
-      console.warn(`CoinGecko market_chart failed for ${id}: ${res.status}`)
-      return []
-    }
-
-    try {
-      const data = (await res.json()) as { prices?: [number, number][] }
-      const points: TimePricePoint[] =
-        data.prices?.map(([timestamp, price]) => ({ timestamp, price })) ?? []
-      return normalizeToBucketPoints(points, bucketTimestamps)
-    } catch (e) {
-      console.error(`Failed ${range} history for ${id}`, e)
-      return []
+    const response = await fetchCoinGeckoJson<{ prices?: [number, number][] }>(
+      url,
+      60,
+      `market_chart(${id},${range})`
+    )
+    const data = response.data
+    if (!data) return { points: [], status: response.status }
+    const points: TimePricePoint[] = data.prices?.map(([timestamp, price]) => ({ timestamp, price })) ?? []
+    return {
+      points: normalizeToBucketPoints(points, bucketTimestamps),
+      status: response.status,
     }
   })
 
