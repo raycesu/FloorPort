@@ -187,9 +187,19 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Missing id' }, { status: 400 })
   }
 
-  const { error } = await supabase.from('holdings').delete().eq('id', id)
+  const { data: deletedRows, error } = await supabase
+    .from('holdings')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .select('id')
+
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (!deletedRows?.length) {
+    return NextResponse.json({ error: 'Holding not found' }, { status: 404 })
   }
 
   return NextResponse.json({ ok: true })

@@ -3,7 +3,7 @@
 import { useDisplayCurrency } from '@/components/CurrencyContext'
 import { formatMoney } from '@/lib/format'
 import type { PerformanceRange } from '@/types'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -55,17 +55,21 @@ export function PerformanceBars({
   const [loadingRange, setLoadingRange] = useState<PerformanceRange | null>(null)
   const [hasMounted, setHasMounted] = useState(false)
   const apiQueryKey = useMemo(() => JSON.stringify(apiQuery ?? {}), [apiQuery])
+  /** Ranges that have finished a successful fetch (including empty series). Failed fetches are not added so user can retry by switching tabs. */
+  const rangeFetchDoneRef = useRef<Set<PerformanceRange>>(new Set([initialRange]))
 
   useEffect(() => {
     setHasMounted(true)
   }, [])
 
   useEffect(() => {
+    rangeFetchDoneRef.current = new Set([initialRange])
     setSeriesByRange({ [initialRange]: series } as Record<PerformanceRange, { timestamp: number; value: number }[]>)
   }, [apiQueryKey, initialRange, series])
 
   useEffect(() => {
-    if (seriesByRange[selectedRange]) return
+    if (rangeFetchDoneRef.current.has(selectedRange)) return
+
     let cancelled = false
     async function load() {
       setLoadingRange(selectedRange)
@@ -79,10 +83,12 @@ export function PerformanceBars({
         if (!res.ok) throw new Error('Failed to load history')
         const json = (await res.json()) as { series?: { timestamp: number; value: number }[] }
         if (!cancelled) {
+          const nextSeries = json.series ?? []
           setSeriesByRange((prev) => ({
             ...prev,
-            [selectedRange]: json.series ?? [],
+            [selectedRange]: nextSeries,
           }))
+          rangeFetchDoneRef.current.add(selectedRange)
         }
       } catch {
         if (!cancelled) {
@@ -96,7 +102,7 @@ export function PerformanceBars({
     return () => {
       cancelled = true
     }
-  }, [apiQueryKey, selectedRange, seriesByRange])
+  }, [apiQueryKey, selectedRange])
 
   const data = useMemo(
     () =>

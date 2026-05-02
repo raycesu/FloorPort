@@ -15,6 +15,10 @@ const COINGECKO_IDS: Record<string, string> = {
 const TWELVE_DATA_BASE_URL = 'https://api.twelvedata.com'
 const TWELVE_DATA_QUOTE_CACHE_TTL_MS = 60 * 1000
 const TWELVE_DATA_HISTORY_CACHE_TTL_MS = 3 * 60 * 1000
+const TWELVE_DATA_CACHE_MAX_ENTRIES = 350
+
+const COINGECKO_HISTORY_CACHE_TTL_MS = 60 * 1000
+const COINGECKO_HISTORY_CONCURRENCY = 4
 
 type CacheEntry<T> = {
   expiresAt: number
@@ -23,6 +27,18 @@ type CacheEntry<T> = {
 
 const twelveDataMemoryCache = new Map<string, CacheEntry<unknown>>()
 const twelveDataInFlight = new Map<string, Promise<unknown>>()
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms))
+}
+
+function touchTwelveDataCacheLimit() {
+  while (twelveDataMemoryCache.size > TWELVE_DATA_CACHE_MAX_ENTRIES) {
+    const first = twelveDataMemoryCache.keys().next().value
+    if (first === undefined) break
+    twelveDataMemoryCache.delete(first)
+  }
+}
 
 type TwelveDataQuote = {
   symbol?: string
@@ -93,6 +109,7 @@ async function withTwelveDataCache<T>(
   const next = producer()
     .then((value) => {
       twelveDataMemoryCache.set(key, { value, expiresAt: Date.now() + ttlMs })
+      touchTwelveDataCacheLimit()
       return value
     })
     .finally(() => {
@@ -116,7 +133,8 @@ function parseTwelveDataError(data: unknown): { code?: number; message?: string 
 async function fetchTwelveDataJson<T>(
   endpoint: string,
   params: Record<string, string>,
-  revalidateSeconds: number
+  revalidateSeconds: number,
+  attempt = 0
 ): Promise<T | null> {
   const apiKey = getTwelveDataApiKey()
   if (!apiKey) {
@@ -128,17 +146,30 @@ async function fetchTwelveDataJson<T>(
   try {
     const res = await fetch(url, { next: { revalidate: revalidateSeconds } })
     const data = (await res.json().catch(() => null)) as T | null
+
     if (!res.ok) {
       const err = parseTwelveDataError(data)
-      if (res.status === 429 || err?.code === 429) {
-        console.warn(`Twelve Data rate limit hit for ${endpoint}`)
-      } else {
-        console.warn(`Twelve Data request failed for ${endpoint}: ${res.status} ${res.statusText}`)
+      const is429 = res.status === 429 || err?.code === 429
+      if (is429 && attempt === 0) {
+        const retryAfter = res.headers.get('Retry-After')
+        const sec = retryAfter ? parseInt(retryAfter, 10) : NaN
+        const waitMs = Number.isFinite(sec)
+          ? Math.min(Math.max(sec, 1) * 1000, 60_000)
+          : 500 + Math.random() * 1000
+        await sleep(waitMs)
+        return fetchTwelveDataJson<T>(endpoint, params, revalidateSeconds, 1)
       }
+      if (is429) console.warn(`Twelve Data rate limit hit for ${endpoint}`)
+      else console.warn(`Twelve Data request failed for ${endpoint}: ${res.status} ${res.statusText}`)
       return null
     }
+
     const err = parseTwelveDataError(data)
     if (err?.code) {
+      if (err.code === 429 && attempt === 0) {
+        await sleep(500 + Math.random() * 1000)
+        return fetchTwelveDataJson<T>(endpoint, params, revalidateSeconds, 1)
+      }
       if (err.code === 429) console.warn(`Twelve Data rate limit hit for ${endpoint}`)
       else console.warn(`Twelve Data error (${err.code}) for ${endpoint}: ${err.message ?? 'Unknown error'}`)
       return null
@@ -221,25 +252,6 @@ async function getStockTimeSeries(
     )
     return parseHistoryMap(data)
   })
-}
-
-export async function getStockCloses(
-  symbols: string[],
-  interval: string,
-  outputsize: number,
-  revalidateSeconds: number
-): Promise<Record<string, number[]>> {
-  const rows = await getStockTimeSeries(symbols, interval, outputsize, revalidateSeconds)
-  const out: Record<string, number[]> = {}
-  for (const [symbol, payload] of Object.entries(rows)) {
-    const closes: number[] = []
-    for (const value of payload.values ?? []) {
-      const close = parseMaybeNumber(value.close)
-      if (close != null && close > 0) closes.push(close)
-    }
-    out[symbol] = closes
-  }
-  return out
 }
 
 export function getCoinGeckoId(symbol: string): string | undefined {
@@ -357,6 +369,9 @@ export type TimePricePoint = {
   timestamp: number
   price: number
 }
+
+const coinGeckoHistoryCache = new Map<string, CacheEntry<TimePricePoint[]>>()
+const coinGeckoHistoryInFlight = new Map<string, Promise<TimePricePoint[]>>()
 
 const RANGE_CONFIG: Record<
   Lowercase<PerformanceRange>,
@@ -528,6 +543,92 @@ function makeBucketTimestamps(durationMs: number, intervalMinutes: number): numb
   return out
 }
 
+async function withCoinGeckoHistoryCache(
+  key: string,
+  producer: () => Promise<TimePricePoint[]>
+): Promise<TimePricePoint[]> {
+  const now = Date.now()
+  const cached = coinGeckoHistoryCache.get(key)
+  if (cached && cached.expiresAt > now) return cached.value
+
+  const active = coinGeckoHistoryInFlight.get(key)
+  if (active) return active
+
+  const next = producer()
+    .then((value) => {
+      coinGeckoHistoryCache.set(key, { value, expiresAt: Date.now() + COINGECKO_HISTORY_CACHE_TTL_MS })
+      return value
+    })
+    .finally(() => {
+      coinGeckoHistoryInFlight.delete(key)
+    })
+
+  coinGeckoHistoryInFlight.set(key, next)
+  return next
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  if (items.length === 0) return []
+  const results: R[] = new Array(items.length)
+  let nextSlot = 0
+
+  const worker = async () => {
+    while (true) {
+      const slot = nextSlot
+      nextSlot += 1
+      if (slot >= items.length) break
+      results[slot] = await fn(items[slot])
+    }
+  }
+
+  const n = Math.min(Math.max(1, limit), items.length)
+  await Promise.all(Array.from({ length: n }, () => worker()))
+  return results
+}
+
+async function fetchOneCoinGeckoMarketChart(
+  id: string,
+  bucketTimestamps: number[],
+  range: SupportedRangeKey
+): Promise<readonly [string, TimePricePoint[]]> {
+  const days = clampCoinGeckoDays(range)
+  const cacheKey = `cg:${id}:${range}:${days}`
+
+  const series = await withCoinGeckoHistoryCache(cacheKey, async () => {
+    const url = `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}`
+
+    const doFetch = () => fetch(url, { next: { revalidate: 60 } })
+
+    let res = await doFetch()
+    if (res.status === 429) {
+      const retryAfter = res.headers.get('Retry-After')
+      const sec = retryAfter ? parseInt(retryAfter, 10) : NaN
+      const waitMs = Number.isFinite(sec)
+        ? Math.min(Math.max(sec, 1) * 1000, 60_000)
+        : 600 + Math.random() * 600
+      await sleep(waitMs)
+      res = await doFetch()
+    }
+
+    if (!res.ok) {
+      console.warn(`CoinGecko market_chart failed for ${id}: ${res.status}`)
+      return []
+    }
+
+    try {
+      const data = (await res.json()) as { prices?: [number, number][] }
+      const points: TimePricePoint[] =
+        data.prices?.map(([timestamp, price]) => ({ timestamp, price })) ?? []
+      return normalizeToBucketPoints(points, bucketTimestamps)
+    } catch (e) {
+      console.error(`Failed ${range} history for ${id}`, e)
+      return []
+    }
+  })
+
+  return [id, series] as const
+}
+
 async function getCryptoHistoryByCoingeckoIds(
   ids: string[],
   bucketTimestamps: number[],
@@ -535,24 +636,8 @@ async function getCryptoHistoryByCoingeckoIds(
 ): Promise<Record<string, TimePricePoint[]>> {
   const unique = [...new Set(ids.filter(Boolean))]
   if (unique.length === 0) return {}
-  const days = clampCoinGeckoDays(range)
-  const pairs = await Promise.all(
-    unique.map(async (id) => {
-      try {
-        const res = await fetch(
-          `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(id)}/market_chart?vs_currency=usd&days=${days}`,
-          { next: { revalidate: 60 } }
-        )
-        if (!res.ok) return [id, []] as const
-        const data = (await res.json()) as { prices?: [number, number][] }
-        const points: TimePricePoint[] =
-          data.prices?.map(([timestamp, price]) => ({ timestamp, price })) ?? []
-        return [id, normalizeToBucketPoints(points, bucketTimestamps)] as const
-      } catch (e) {
-        console.error(`Failed ${range} history for ${id}`, e)
-        return [id, []] as const
-      }
-    })
+  const pairs = await mapWithConcurrency(unique, COINGECKO_HISTORY_CONCURRENCY, (id) =>
+    fetchOneCoinGeckoMarketChart(id, bucketTimestamps, range)
   )
   return Object.fromEntries(pairs)
 }

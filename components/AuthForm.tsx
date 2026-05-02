@@ -43,7 +43,7 @@ export function AuthForm() {
     })
 
     return () => subscription.unsubscribe()
-  }, [supabase.auth])
+  }, [supabase])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()

@@ -52,6 +52,7 @@ export function formatUnitPrice(
 }
 
 export function formatPercent(n: number, opts?: { withPlus?: boolean }) {
+  if (!Number.isFinite(n)) return '—'
   const withPlus = opts?.withPlus ?? true
   const sign = n > 0 && withPlus ? '+' : ''
   return `${sign}${n.toFixed(2)}%`
@@ -60,17 +61,4 @@ export function formatPercent(n: number, opts?: { withPlus?: boolean }) {
 export function formatQuantity(n: number) {
   if (Number.isInteger(n)) return String(n)
   return n.toLocaleString('en-US', { maximumFractionDigits: 8 })
-}
-
-/** Fixed locale + ET so SSR and browser output match (avoids hydration errors). */
-const executedAtFmt = new Intl.DateTimeFormat('en-US', {
-  dateStyle: 'medium',
-  timeStyle: 'short',
-  timeZone: 'America/New_York',
-})
-
-export function formatExecutedAt(iso: string) {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  return `${executedAtFmt.format(d)} ET`
 }

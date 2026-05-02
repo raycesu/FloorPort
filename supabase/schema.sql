@@ -11,6 +11,7 @@ alter table profiles enable row level security;
 
 create policy "Users can view own profile" on profiles for select using (auth.uid() = id);
 create policy "Users can update own profile" on profiles for update using (auth.uid() = id);
+create policy "Users can insert own profile" on profiles for insert with check (auth.uid() = id);
 
 create table wallets (
   id uuid default gen_random_uuid() primary key,
@@ -59,34 +60,3 @@ create table holdings (
 alter table holdings enable row level security;
 
 create policy "Users manage own holdings" on holdings for all using (auth.uid() = user_id);
-
-create table transactions (
-  id uuid default gen_random_uuid() primary key,
-  user_id uuid references auth.users(id) on delete cascade not null,
-  holding_id uuid references holdings(id) on delete cascade not null,
-  symbol text not null,
-  asset_type text not null,
-  type text not null,
-  quantity numeric not null,
-  price numeric not null,
-  executed_at timestamp with time zone default now(),
-  notes text
-);
-
-alter table transactions enable row level security;
-
-create policy "Users manage own transactions" on transactions for all using (auth.uid() = user_id);
-
-create table watchlist (
-  id uuid default gen_random_uuid() primary key,
-  user_id uuid references auth.users(id) on delete cascade not null,
-  symbol text not null,
-  name text not null,
-  asset_type text not null,
-  added_at timestamp with time zone default now(),
-  unique(user_id, symbol)
-);
-
-alter table watchlist enable row level security;
-
-create policy "Users manage own watchlist" on watchlist for all using (auth.uid() = user_id);

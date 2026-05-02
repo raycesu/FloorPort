@@ -17,7 +17,6 @@ export function EditHoldingModal({ holding, open, onClose, onDone }: Props) {
   const { currency, usdToCad } = useDisplayCurrency()
   const [quantity, setQuantity] = useState('')
   const [avgBuy, setAvgBuy] = useState('')
-  const [tradePrice, setTradePrice] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -25,7 +24,6 @@ export function EditHoldingModal({ holding, open, onClose, onDone }: Props) {
     if (open && holding) {
       setQuantity(String(holding.quantity))
       setAvgBuy(String(holding.avg_buy_price))
-      setTradePrice('')
       setError(null)
     }
   }, [open, holding])
@@ -42,7 +40,6 @@ export function EditHoldingModal({ holding, open, onClose, onDone }: Props) {
     try {
       const qty = parseFloat(quantity)
       const avg = parseFloat(avgBuy)
-      const tp = tradePrice.trim() === '' ? null : parseFloat(tradePrice)
       if (!Number.isFinite(qty) || qty < 0 || (!isCash && (!Number.isFinite(avg) || avg < 0))) {
         setError('Enter a valid quantity and average buy price.')
         setLoading(false)
@@ -54,7 +51,6 @@ export function EditHoldingModal({ holding, open, onClose, onDone }: Props) {
         quantity: qty,
         avg_buy_price: isCash ? 1 : avg,
       }
-      if (!isCash && tp != null && Number.isFinite(tp) && tp >= 0) body.trade_price = tp
 
       const res = await fetch('/api/holdings', {
         method: 'PUT',
@@ -127,24 +123,6 @@ export function EditHoldingModal({ holding, open, onClose, onDone }: Props) {
               </div>
             )}
           </div>
-
-          {isCash ? null : (
-            <div className="mt-4">
-              <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">Trade price for quantity change (optional)</label>
-              <input
-                type="number"
-                step="any"
-                min="0"
-                className="mt-2 w-full"
-                value={tradePrice}
-                onChange={(e) => setTradePrice(e.target.value)}
-                placeholder="Per unit if you bought or sold at a different price"
-              />
-              <p className="mt-2 text-xs text-fp-muted">
-                Leave blank to use the average buy price when adjusting the position.
-              </p>
-            </div>
-          )}
         </section>
 
         {error ? (

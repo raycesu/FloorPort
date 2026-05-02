@@ -27,7 +27,11 @@ export async function GET(request: NextRequest) {
 
   if (walletId) query = query.eq('wallet_id', walletId)
 
-  const { data: rows } = await query
+  const { data: rows, error: holdingsError } = await query
+
+  if (holdingsError) {
+    return NextResponse.json({ error: holdingsError.message }, { status: 500 })
+  }
 
   const holdings = (rows ?? []).map((row) => mapRowToHolding(row as Record<string, unknown>))
   const keys = holdings.map((h) => ({

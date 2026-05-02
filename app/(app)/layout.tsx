@@ -14,11 +14,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect('/login')
   }
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('preferred_currency')
     .eq('id', user.id)
     .single()
+
+  if (profileError) {
+    console.error('profiles fetch failed', profileError.message)
+  }
 
   const currency = profile?.preferred_currency === 'CAD' ? 'CAD' : 'USD'
   const usdToCad = await getUsdToCad()

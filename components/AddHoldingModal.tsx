@@ -62,11 +62,6 @@ export function AddHoldingModal({ open, walletId, walletName, onClose, onDone }:
   const [searching, setSearching] = useState(false)
   const [quantity, setQuantity] = useState('')
   const [avgBuy, setAvgBuy] = useState('')
-  const [executedAt, setExecutedAt] = useState(() => {
-    const d = new Date()
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
-    return d.toISOString().slice(0, 16)
-  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [listOpen, setListOpen] = useState(false)
@@ -81,9 +76,6 @@ export function AddHoldingModal({ open, walletId, walletName, onClose, onDone }:
     setAvgBuy('')
     setError(null)
     setListOpen(false)
-    const d = new Date()
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
-    setExecutedAt(d.toISOString().slice(0, 16))
   }, [open])
 
   useEffect(() => {
@@ -176,7 +168,6 @@ export function AddHoldingModal({ open, walletId, walletName, onClose, onDone }:
 
     setLoading(true)
     try {
-      const executedIso = new Date(executedAt).toISOString()
       const body: Record<string, unknown> = {
         wallet_id: walletId,
         symbol: selected.symbol,
@@ -184,7 +175,6 @@ export function AddHoldingModal({ open, walletId, walletName, onClose, onDone }:
         asset_type: assetType === 'cash' ? 'cash' : assetType,
         quantity: qty,
         avg_buy_price: price,
-        executed_at: executedIso,
       }
       if (assetType === 'crypto' && selected.coingecko_id) body.coingecko_id = selected.coingecko_id
 
@@ -351,15 +341,6 @@ export function AddHoldingModal({ open, walletId, walletName, onClose, onDone }:
                 />
               </div>
             )}
-            <div className={assetType === 'cash' ? 'sm:col-span-2' : 'sm:col-span-2'}>
-              <label className="text-xs font-medium uppercase tracking-[0.08em] text-fp-muted">Purchase date</label>
-              <input
-                type="datetime-local"
-                className="mt-2 w-full"
-                value={executedAt}
-                onChange={(e) => setExecutedAt(e.target.value)}
-              />
-            </div>
           </div>
         </section>
 
