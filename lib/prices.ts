@@ -773,7 +773,8 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
 async function fetchOneCoinGeckoMarketChart(
   id: string,
   bucketTimestamps: number[],
-  range: SupportedRangeKey
+  range: SupportedRangeKey,
+  maxAttempts = COINGECKO_RETRY_ATTEMPTS
 ): Promise<readonly [string, TimePricePoint[]]> {
   const days = clampCoinGeckoDays(range)
   const cacheKey = `cg:${id}:${range}:${days}`
@@ -783,7 +784,8 @@ async function fetchOneCoinGeckoMarketChart(
     const response = await fetchCoinGeckoJson<{ prices?: [number, number][] }>(
       url,
       60,
-      `market_chart(${id},${range})`
+      `market_chart(${id},${range})`,
+      maxAttempts
     )
     const data = response.data
     if (!data) return { points: [], status: response.status }
@@ -800,14 +802,19 @@ async function fetchOneCoinGeckoMarketChart(
 async function getCryptoHistoryByCoingeckoIds(
   ids: string[],
   bucketTimestamps: number[],
-  range: SupportedRangeKey
+  range: SupportedRangeKey,
+  maxAttempts = COINGECKO_RETRY_ATTEMPTS
 ): Promise<Record<string, TimePricePoint[]>> {
   const unique = [...new Set(ids.filter(Boolean))]
   if (unique.length === 0) return {}
   const pairs = await mapWithConcurrency(unique, COINGECKO_HISTORY_CONCURRENCY, (id) =>
-    fetchOneCoinGeckoMarketChart(id, bucketTimestamps, range)
+    fetchOneCoinGeckoMarketChart(id, bucketTimestamps, range, maxAttempts)
   )
   return Object.fromEntries(pairs)
+}
+
+type PriceHistoryOptions = {
+  preferFastFail?: boolean
 }
 
 async function getStockHistoryByRange(
@@ -846,7 +853,8 @@ async function getStockHistoryByRange(
 
 export async function getLivePriceHistoryByHoldingId(
   items: PriceKey[],
-  range: PerformanceRange | string
+  range: PerformanceRange | string,
+  options?: PriceHistoryOptions
 ): Promise<Record<string, TimePricePoint[]>> {
   const rangeKey = toRangeKey(range)
   const config = RANGE_CONFIG[rangeKey]
@@ -872,13 +880,19 @@ export async function getLivePriceHistoryByHoldingId(
   }
 
   const [cgSeries, legacyCryptoSeries, stockSeries] = await Promise.all([
-    getCryptoHistoryByCoingeckoIds([...cryptoByCoingecko.keys()], buckets, rangeKey),
+    getCryptoHistoryByCoingeckoIds(
+      [...cryptoByCoingecko.keys()],
+      buckets,
+      rangeKey,
+      options?.preferFastFail ? 1 : COINGECKO_RETRY_ATTEMPTS
+    ),
     getCryptoHistoryByCoingeckoIds(
       [...new Set(legacyCryptoSymbols)]
         .map((symbol) => getCoinGeckoId(symbol))
         .filter((id): id is string => Boolean(id)),
       buckets,
-      rangeKey
+      rangeKey,
+      options?.preferFastFail ? 1 : COINGECKO_RETRY_ATTEMPTS
     ),
     getStockHistoryByRange(stockSymbols, buckets, rangeKey),
   ])
@@ -913,6 +927,14 @@ export async function getHoldingChangePercents(
 ): Promise<Record<string, { change_1d?: number; change_7d?: number }>> {
   const change1dBySymbol = await getLiveChangePercent(items)
   const historyByHoldingId = await getLivePriceHistoryByHoldingId(items, '7D')
+  return getHoldingChangePercentsFromHistory(items, change1dBySymbol, historyByHoldingId)
+}
+
+export function getHoldingChangePercentsFromHistory(
+  items: PriceKey[],
+  change1dBySymbol: Record<string, number>,
+  historyByHoldingId: Record<string, TimePricePoint[]>
+): Record<string, { change_1d?: number; change_7d?: number }> {
   const out: Record<string, { change_1d?: number; change_7d?: number }> = {}
 
   for (const item of items) {

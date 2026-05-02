@@ -7,9 +7,13 @@ import {
   enrichHoldingsWithPrices,
 } from '@/lib/calculations'
 import { mapRowToHolding, mapRowToWallet } from '@/lib/mappers'
-import { getHoldingChangePercents, getLivePriceHistoryByHoldingId, getLivePrices } from '@/lib/prices'
+import {
+  getHoldingChangePercentsFromHistory,
+  getLiveChangePercent,
+  getLivePriceHistoryByHoldingId,
+  getLivePrices,
+} from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 
 export default async function HoldingsPage({
   searchParams,
@@ -20,9 +24,9 @@ export default async function HoldingsPage({
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/login')
+  const userId = user?.id
+  if (!userId) {
+    throw new Error('Authenticated user not found for holdings route')
   }
 
   const { wallet: walletParam } = await searchParams
@@ -30,7 +34,7 @@ export default async function HoldingsPage({
   const { data: walletRows } = await supabase
     .from('wallets')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .order('created_at', { ascending: true })
 
   const wallets = (walletRows ?? []).map((r) => mapRowToWallet(r as Record<string, unknown>))
@@ -40,7 +44,7 @@ export default async function HoldingsPage({
   const { data: allRows } = await supabase
     .from('holdings')
     .select('*')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .order('added_at', { ascending: false })
 
   const allHoldings = (allRows ?? []).map((r) => mapRowToHolding(r))
@@ -50,10 +54,12 @@ export default async function HoldingsPage({
     asset_type: h.asset_type,
     coingecko_id: h.coingecko_id,
   }))
-  const [prices, changePercents] = await Promise.all([
+  const [prices, change1dBySymbol, history7dByHoldingId] = await Promise.all([
     getLivePrices(keys),
-    getHoldingChangePercents(keys),
+    getLiveChangePercent(keys),
+    getLivePriceHistoryByHoldingId(keys, '7D', { preferFastFail: true }),
   ])
+  const changePercents = getHoldingChangePercentsFromHistory(keys, change1dBySymbol, history7dByHoldingId)
   const enrichedAll = enrichHoldingsWithMarketChanges(
     enrichHoldingsWithPrices(allHoldings, prices),
     changePercents
@@ -68,7 +74,9 @@ export default async function HoldingsPage({
     asset_type: h.asset_type,
     coingecko_id: h.coingecko_id,
   }))
-  const historyByHoldingId = await getLivePriceHistoryByHoldingId(selectedKeys, '24H')
+  const historyByHoldingId = await getLivePriceHistoryByHoldingId(selectedKeys, '24H', {
+    preferFastFail: true,
+  })
   const performanceSeries = calcPortfolioHistorySeries(enriched, historyByHoldingId)
   const walletSummary = calcPortfolioSummary(enriched)
 

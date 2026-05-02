@@ -5,6 +5,19 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
+const PORTFOLIO_HISTORY_CACHE_TTL_MS = 30_000
+
+type PortfolioHistorySeriesPoint = { timestamp: number; value: number }
+type PortfolioHistoryCacheEntry = {
+  expiresAt: number
+  series: PortfolioHistorySeriesPoint[]
+}
+
+const portfolioHistoryCache = new Map<string, PortfolioHistoryCacheEntry>()
+
+function getPortfolioHistoryCacheKey(userId: string, walletId: string, range: string) {
+  return `${userId}:${walletId || 'all'}:${range}`
+}
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
@@ -19,6 +32,13 @@ export async function GET(request: NextRequest) {
   const searchParams = new URL(request.url).searchParams
   const range = toRangeKey(searchParams.get('range') ?? '24h')
   const walletId = searchParams.get('wallet_id')?.trim()
+  const cacheKey = getPortfolioHistoryCacheKey(user.id, walletId ?? '', range)
+  const now = Date.now()
+  const cached = portfolioHistoryCache.get(cacheKey)
+  if (cached && cached.expiresAt > now) {
+    return NextResponse.json({ series: cached.series })
+  }
+
   let query = supabase
     .from('holdings')
     .select('*')
@@ -43,11 +63,15 @@ export async function GET(request: NextRequest) {
 
   const [prices, historyByHoldingId] = await Promise.all([
     getLivePrices(keys),
-    getLivePriceHistoryByHoldingId(keys, range),
+    getLivePriceHistoryByHoldingId(keys, range, { preferFastFail: true }),
   ])
 
   const enriched = enrichHoldingsWithPrices(holdings, prices)
   const series = calcPortfolioHistorySeries(enriched, historyByHoldingId)
+  portfolioHistoryCache.set(cacheKey, {
+    series,
+    expiresAt: now + PORTFOLIO_HISTORY_CACHE_TTL_MS,
+  })
 
   return NextResponse.json({ series })
 }

@@ -10,9 +10,13 @@ import {
   enrichHoldingsWithPrices,
 } from '@/lib/calculations'
 import { mapRowToHolding } from '@/lib/mappers'
-import { getHoldingChangePercents, getLivePriceHistoryByHoldingId, getLivePrices } from '@/lib/prices'
+import {
+  getHoldingChangePercentsFromHistory,
+  getLiveChangePercent,
+  getLivePriceHistoryByHoldingId,
+  getLivePrices,
+} from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 
 function getGreeting() {
   const hour = new Date().getHours()
@@ -35,14 +39,14 @@ export default async function DashboardPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser()
-
-  if (!user) {
-    redirect('/login')
+  const userId = user?.id
+  if (!userId) {
+    throw new Error('Authenticated user not found for dashboard route')
   }
 
   const [{ data: rows }, { data: walletRows }] = await Promise.all([
-    supabase.from('holdings').select('*').order('added_at', { ascending: false }),
-    supabase.from('wallets').select('id').eq('user_id', user.id).order('created_at', { ascending: true }).limit(1),
+    supabase.from('holdings').select('*').eq('user_id', userId).order('added_at', { ascending: false }),
+    supabase.from('wallets').select('id').eq('user_id', userId).order('created_at', { ascending: true }).limit(1),
   ])
 
   const holdings = (rows ?? []).map((r) => mapRowToHolding(r as Record<string, unknown>))
@@ -52,11 +56,13 @@ export default async function DashboardPage() {
     asset_type: h.asset_type,
     coingecko_id: h.coingecko_id,
   }))
-  const [prices, changePercents, historyByHoldingId] = await Promise.all([
+  const [prices, change1dBySymbol, historyByHoldingId, history7dByHoldingId] = await Promise.all([
     getLivePrices(keys),
-    getHoldingChangePercents(keys),
-    getLivePriceHistoryByHoldingId(keys, '24H'),
+    getLiveChangePercent(keys),
+    getLivePriceHistoryByHoldingId(keys, '24H', { preferFastFail: true }),
+    getLivePriceHistoryByHoldingId(keys, '7D', { preferFastFail: true }),
   ])
+  const changePercents = getHoldingChangePercentsFromHistory(keys, change1dBySymbol, history7dByHoldingId)
   const enriched = enrichHoldingsWithMarketChanges(
     enrichHoldingsWithPrices(holdings, prices),
     changePercents
