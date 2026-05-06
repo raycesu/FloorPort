@@ -1,6 +1,6 @@
 import { calcPortfolioHistorySeries, enrichHoldingsWithPrices } from '@/lib/calculations'
 import { mapRowToHolding } from '@/lib/mappers'
-import { getLivePriceHistoryByHoldingId, getLivePrices, toRangeKey } from '@/lib/prices'
+import { getLivePriceHistoryByHoldingIdWithMeta, getLivePrices, toRangeKey } from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -11,6 +11,8 @@ type PortfolioHistorySeriesPoint = { timestamp: number; value: number }
 type PortfolioHistoryCacheEntry = {
   expiresAt: number
   series: PortfolioHistorySeriesPoint[]
+  dataUpdatedAt: number
+  dataIsStale: boolean
 }
 
 const portfolioHistoryCache = new Map<string, PortfolioHistoryCacheEntry>()
@@ -36,7 +38,11 @@ export async function GET(request: NextRequest) {
   const now = Date.now()
   const cached = portfolioHistoryCache.get(cacheKey)
   if (cached && cached.expiresAt > now) {
-    return NextResponse.json({ series: cached.series })
+    return NextResponse.json({
+      series: cached.series,
+      dataUpdatedAt: cached.dataUpdatedAt,
+      dataIsStale: cached.dataIsStale,
+    })
   }
 
   let query = supabase
@@ -61,17 +67,23 @@ export async function GET(request: NextRequest) {
     coingecko_id: h.coingecko_id,
   }))
 
-  const [prices, historyByHoldingId] = await Promise.all([
+  const [prices, historyResult] = await Promise.all([
     getLivePrices(keys),
-    getLivePriceHistoryByHoldingId(keys, range, { preferFastFail: true }),
+    getLivePriceHistoryByHoldingIdWithMeta(keys, range, { preferFastFail: true }),
   ])
 
   const enriched = enrichHoldingsWithPrices(holdings, prices)
-  const series = calcPortfolioHistorySeries(enriched, historyByHoldingId)
+  const series = calcPortfolioHistorySeries(enriched, historyResult.history)
   portfolioHistoryCache.set(cacheKey, {
     series,
     expiresAt: now + PORTFOLIO_HISTORY_CACHE_TTL_MS,
+    dataUpdatedAt: historyResult.meta.fetchedAt,
+    dataIsStale: historyResult.meta.isStale,
   })
 
-  return NextResponse.json({ series })
+  return NextResponse.json({
+    series,
+    dataUpdatedAt: historyResult.meta.fetchedAt,
+    dataIsStale: historyResult.meta.isStale,
+  })
 }

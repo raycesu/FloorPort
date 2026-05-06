@@ -169,6 +169,7 @@ export function HoldingsPageClient({
   walletValues,
   walletSummary,
   performanceSeries,
+  performanceMeta,
 }: {
   initialHoldings: Holding[]
   wallets: Wallet[]
@@ -176,6 +177,7 @@ export function HoldingsPageClient({
   walletValues: Record<string, number>
   walletSummary: PortfolioSummary
   performanceSeries: { timestamp: number; value: number }[]
+  performanceMeta?: { fetchedAt: number; isStale: boolean }
 }) {
   const router = useRouter()
   const { currency, usdToCad } = useDisplayCurrency()
@@ -533,6 +535,8 @@ export function HoldingsPageClient({
           title="Wallet Performance"
           description={`${currentWallet?.name ?? 'Selected wallet'} value across the selected range`}
           apiQuery={{ wallet_id: initialWalletId }}
+          dataUpdatedAt={performanceMeta?.fetchedAt}
+          dataIsStale={performanceMeta?.isStale}
         />
         <AllocationChart
           holdings={initialHoldings}

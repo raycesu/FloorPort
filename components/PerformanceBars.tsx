@@ -34,18 +34,33 @@ function formatXAxisLabel(timestamp: number, range: PerformanceRange) {
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
 
+type RangeFreshness = { updatedAt: number; stale: boolean }
+
+const formatFreshness = (updatedAt: number) => {
+  const sec = Math.max(0, Math.floor((Date.now() - updatedAt) / 1000))
+  if (sec < 45) return 'just now'
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ago`
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`
+  return `${Math.floor(sec / 86400)}d ago`
+}
+
 export function PerformanceBars({
   series,
   initialRange = '24H',
   title,
   description,
   apiQuery,
+  dataUpdatedAt,
+  dataIsStale,
 }: {
   series: { timestamp: number; value: number }[]
   initialRange?: PerformanceRange
   title?: string
   description?: string
   apiQuery?: Record<string, string | undefined>
+  /** Server-side fetch time (ms) for the initial range */
+  dataUpdatedAt?: number
+  dataIsStale?: boolean
 }) {
   const { currency, usdToCad } = useDisplayCurrency()
   const [selectedRange, setSelectedRange] = useState<PerformanceRange>(initialRange)
@@ -54,6 +69,8 @@ export function PerformanceBars({
   } as Record<PerformanceRange, { timestamp: number; value: number }[]>)
   const [loadingRange, setLoadingRange] = useState<PerformanceRange | null>(null)
   const [hasMounted, setHasMounted] = useState(false)
+  const [freshnessByRange, setFreshnessByRange] = useState<Partial<Record<PerformanceRange, RangeFreshness>>>({})
+  const [freshnessLabel, setFreshnessLabel] = useState<string | null>(null)
   const apiQueryKey = useMemo(() => JSON.stringify(apiQuery ?? {}), [apiQuery])
   /** Ranges that have finished a successful fetch (including empty series). Failed fetches are not added so user can retry by switching tabs. */
   const rangeFetchDoneRef = useRef<Set<PerformanceRange>>(new Set([initialRange]))
@@ -61,6 +78,26 @@ export function PerformanceBars({
   useEffect(() => {
     setHasMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (dataUpdatedAt == null) return
+    setFreshnessByRange((prev) => ({
+      ...prev,
+      [initialRange]: { updatedAt: dataUpdatedAt, stale: dataIsStale ?? false },
+    }))
+  }, [initialRange, dataUpdatedAt, dataIsStale])
+
+  useEffect(() => {
+    const meta = freshnessByRange[selectedRange]
+    if (!meta) {
+      setFreshnessLabel(null)
+      return
+    }
+    const tick = () => setFreshnessLabel(formatFreshness(meta.updatedAt))
+    tick()
+    const id = window.setInterval(tick, 60_000)
+    return () => window.clearInterval(id)
+  }, [selectedRange, freshnessByRange])
 
   useEffect(() => {
     rangeFetchDoneRef.current = new Set([initialRange])
@@ -81,13 +118,23 @@ export function PerformanceBars({
         })
         const res = await fetch(`/api/portfolio-history?${params.toString()}`)
         if (!res.ok) throw new Error('Failed to load history')
-        const json = (await res.json()) as { series?: { timestamp: number; value: number }[] }
+        const json = (await res.json()) as {
+          series?: { timestamp: number; value: number }[]
+          dataUpdatedAt?: number
+          dataIsStale?: boolean
+        }
         if (!cancelled) {
           const nextSeries = json.series ?? []
           setSeriesByRange((prev) => ({
             ...prev,
             [selectedRange]: nextSeries,
           }))
+          if (json.dataUpdatedAt != null) {
+            setFreshnessByRange((prev) => ({
+              ...prev,
+              [selectedRange]: { updatedAt: json.dataUpdatedAt!, stale: json.dataIsStale ?? false },
+            }))
+          }
           rangeFetchDoneRef.current.add(selectedRange)
         }
       } catch {
@@ -270,6 +317,16 @@ export function PerformanceBars({
         {loadingRange ? (
           <p className="mt-4 text-[12px]" style={{ color: '#93a0b4' }}>
             Loading {loadingRange} history...
+          </p>
+        ) : null}
+        {freshnessLabel && freshnessByRange[selectedRange] ? (
+          <p className="mt-2 text-[12px]" style={{ color: '#8f98aa' }}>
+            Updated {freshnessLabel}
+            {freshnessByRange[selectedRange]?.stale ? (
+              <span className="ml-1 text-[#c4a35a]" aria-label="Data may be delayed">
+                · delayed feed
+              </span>
+            ) : null}
           </p>
         ) : null}
       </div>

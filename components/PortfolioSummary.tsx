@@ -4,7 +4,17 @@ import { useDisplayCurrency } from '@/components/CurrencyContext'
 import { formatMoney, formatPercent } from '@/lib/format'
 import type { PortfolioSummary as Summary } from '@/types'
 
-export function PortfolioSummary({ summary }: { summary: Summary }) {
+const formatUtcTimestamp = (timestampMs: number) =>
+  new Date(timestampMs).toISOString().replace('T', ' ').replace('.000Z', ' UTC')
+
+export function PortfolioSummary({
+  summary,
+  marketDataMeta,
+}: {
+  summary: Summary
+  /** When set, shows when portfolio values were last priced */
+  marketDataMeta?: { fetchedAt: number; isStale: boolean }
+}) {
   const { currency, usdToCad } = useDisplayCurrency()
   const m = (n: number) => formatMoney(n, currency, usdToCad)
 
@@ -39,6 +49,7 @@ export function PortfolioSummary({ summary }: { summary: Summary }) {
   ]
 
   return (
+    <div>
     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
       {cards.map((c) => (
         <div
@@ -82,6 +93,17 @@ export function PortfolioSummary({ summary }: { summary: Summary }) {
           ) : null}
         </div>
       ))}
+    </div>
+      {marketDataMeta ? (
+        <p className="mt-3 text-center text-[12px] sm:text-left" style={{ color: '#8f98aa' }}>
+          Prices as of {formatUtcTimestamp(marketDataMeta.fetchedAt)}
+          {marketDataMeta.isStale ? (
+            <span className="ml-1" style={{ color: '#c4a35a' }}>
+              · cached (feed may be delayed)
+            </span>
+          ) : null}
+        </p>
+      ) : null}
     </div>
   )
 }

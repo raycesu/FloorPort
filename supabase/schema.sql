@@ -60,3 +60,18 @@ create table holdings (
 alter table holdings enable row level security;
 
 create policy "Users manage own holdings" on holdings for all using (auth.uid() = user_id);
+
+-- Server-side market cache (service role only; see migration 20260505180000_price_cache.sql)
+create table if not exists public.price_cache (
+  key text primary key,
+  value jsonb not null,
+  fetched_at timestamptz not null default now(),
+  soft_expires_at timestamptz not null,
+  hard_expires_at timestamptz not null,
+  last_status int,
+  source text
+);
+
+create index if not exists price_cache_hard_expires_idx on public.price_cache (hard_expires_at);
+
+alter table public.price_cache enable row level security;

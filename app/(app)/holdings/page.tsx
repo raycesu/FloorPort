@@ -8,10 +8,11 @@ import {
 } from '@/lib/calculations'
 import { mapRowToHolding, mapRowToWallet } from '@/lib/mappers'
 import {
-  getHoldingChangePercentsFromHistory,
   getLiveChangePercent,
-  getLivePriceHistoryByHoldingId,
+  getLivePriceHistoryByHoldingIdWithMeta,
   getLivePrices,
+  getLive7dChangePercentBySymbol,
+  mergeHoldingChangePercents,
 } from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
 
@@ -54,12 +55,16 @@ export default async function HoldingsPage({
     asset_type: h.asset_type,
     coingecko_id: h.coingecko_id,
   }))
-  const [prices, change1dBySymbol, history7dByHoldingId] = await Promise.all([
+  const stockKeys = keys.filter((k) => k.asset_type === 'stock')
+  const [prices, change1dBySymbol, change7dBySymbol, stock7dHistory] = await Promise.all([
     getLivePrices(keys),
     getLiveChangePercent(keys),
-    getLivePriceHistoryByHoldingId(keys, '7D', { preferFastFail: true }),
+    getLive7dChangePercentBySymbol(keys),
+    stockKeys.length
+      ? getLivePriceHistoryByHoldingIdWithMeta(stockKeys, '7D', { preferFastFail: true }).then((r) => r.history)
+      : Promise.resolve({}),
   ])
-  const changePercents = getHoldingChangePercentsFromHistory(keys, change1dBySymbol, history7dByHoldingId)
+  const changePercents = mergeHoldingChangePercents(keys, change1dBySymbol, change7dBySymbol, stock7dHistory)
   const enrichedAll = enrichHoldingsWithMarketChanges(
     enrichHoldingsWithPrices(allHoldings, prices),
     changePercents
@@ -74,10 +79,10 @@ export default async function HoldingsPage({
     asset_type: h.asset_type,
     coingecko_id: h.coingecko_id,
   }))
-  const historyByHoldingId = await getLivePriceHistoryByHoldingId(selectedKeys, '24H', {
+  const hist24 = await getLivePriceHistoryByHoldingIdWithMeta(selectedKeys, '24H', {
     preferFastFail: true,
   })
-  const performanceSeries = calcPortfolioHistorySeries(enriched, historyByHoldingId)
+  const performanceSeries = calcPortfolioHistorySeries(enriched, hist24.history)
   const walletSummary = calcPortfolioSummary(enriched)
 
   return (
@@ -88,6 +93,7 @@ export default async function HoldingsPage({
       walletValues={walletValues}
       walletSummary={walletSummary}
       performanceSeries={performanceSeries}
+      performanceMeta={{ fetchedAt: hist24.meta.fetchedAt, isStale: hist24.meta.isStale }}
     />
   )
 }
