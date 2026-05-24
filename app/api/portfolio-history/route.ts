@@ -1,11 +1,28 @@
-import { calcPortfolioHistorySeries, enrichHoldingsWithPrices } from '@/lib/calculations'
+import { filterKeysForHistoryFetch } from '@/lib/chartHistoryPolicy'
+import { getFiatUsdHistoryByCurrency } from '@/lib/fx'
+import {
+  alignPortfolioSeriesToCurrentTotal,
+  calcPortfolioHistorySeries,
+  enrichHoldingsWithPrices,
+  isReliableChartSeries,
+} from '@/lib/calculations'
+import { makeBucketTimestamps } from '@/lib/sources/chartUtils'
+import { RANGE_CONFIG, type SupportedChartRange } from '@/lib/sources/types'
 import { mapRowToHolding } from '@/lib/mappers'
 import { getLivePriceHistoryByHoldingIdWithMeta, getLivePrices, toRangeKey } from '@/lib/prices'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'nodejs'
-const PORTFOLIO_HISTORY_CACHE_TTL_MS = 30_000
+export const maxDuration = 60
+
+const HISTORY_FETCH_TIMEOUT_MS = 50_000
+
+function portfolioHistoryCacheTtlMs(range: SupportedChartRange): number {
+  if (range === '7d') return 30_000
+  if (range === '3m') return 5 * 60_000
+  return 15 * 60_000
+}
 
 type PortfolioHistorySeriesPoint = { timestamp: number; value: number }
 type PortfolioHistoryCacheEntry = {
@@ -13,6 +30,7 @@ type PortfolioHistoryCacheEntry = {
   series: PortfolioHistorySeriesPoint[]
   dataUpdatedAt: number
   dataIsStale: boolean
+  reliable: boolean
 }
 
 const portfolioHistoryCache = new Map<string, PortfolioHistoryCacheEntry>()
@@ -32,7 +50,7 @@ export async function GET(request: NextRequest) {
   }
 
   const searchParams = new URL(request.url).searchParams
-  const range = toRangeKey(searchParams.get('range') ?? '24h')
+  const range = toRangeKey(searchParams.get('range') ?? '7d')
   const walletId = searchParams.get('wallet_id')?.trim()
   const cacheKey = getPortfolioHistoryCacheKey(user.id, walletId ?? '', range)
   const now = Date.now()
@@ -42,6 +60,7 @@ export async function GET(request: NextRequest) {
       series: cached.series,
       dataUpdatedAt: cached.dataUpdatedAt,
       dataIsStale: cached.dataIsStale,
+      reliable: cached.reliable,
     })
   }
 
@@ -67,23 +86,54 @@ export async function GET(request: NextRequest) {
     coingecko_id: h.coingecko_id,
   }))
 
-  const [prices, historyResult] = await Promise.all([
-    getLivePrices(keys),
-    getLivePriceHistoryByHoldingIdWithMeta(keys, range, { preferFastFail: true }),
-  ])
+  const rangeConfig = RANGE_CONFIG[range]
+  const bucketTimestamps = makeBucketTimestamps(rangeConfig.durationMs, rangeConfig.intervalMinutes)
 
-  const enriched = enrichHoldingsWithPrices(holdings, prices)
-  const series = calcPortfolioHistorySeries(enriched, historyResult.history)
+  const cashCurrencies = holdings.filter((h) => h.asset_type === 'cash').map((h) => h.symbol)
+  const [prices, fiatUsdHistory] = await Promise.all([
+    getLivePrices(keys),
+    getFiatUsdHistoryByCurrency(cashCurrencies, bucketTimestamps),
+  ])
+  const pricedHoldings = enrichHoldingsWithPrices(holdings, prices)
+  const keysForHistory = filterKeysForHistoryFetch(keys, pricedHoldings)
+  const historyPromise = getLivePriceHistoryByHoldingIdWithMeta(keysForHistory, range, {
+    bucketTimestamps,
+    historyCoinTimeoutMs: 30_000,
+  })
+  const historyResult = await Promise.race([
+    historyPromise,
+    new Promise<Awaited<typeof historyPromise>>((resolve) => {
+      setTimeout(
+        () =>
+          resolve({
+            history: {},
+            meta: { fetchedAt: Date.now(), isStale: true },
+          }),
+        HISTORY_FETCH_TIMEOUT_MS
+      )
+    }),
+  ])
+  const rawSeries = calcPortfolioHistorySeries(
+    pricedHoldings,
+    historyResult.history,
+    bucketTimestamps,
+    fiatUsdHistory
+  )
+  const series = alignPortfolioSeriesToCurrentTotal(rawSeries, pricedHoldings)
+  const reliable = isReliableChartSeries(series, pricedHoldings, historyResult.history)
+
   portfolioHistoryCache.set(cacheKey, {
     series,
-    expiresAt: now + PORTFOLIO_HISTORY_CACHE_TTL_MS,
+    expiresAt: now + portfolioHistoryCacheTtlMs(range),
     dataUpdatedAt: historyResult.meta.fetchedAt,
     dataIsStale: historyResult.meta.isStale,
+    reliable,
   })
 
   return NextResponse.json({
     series,
     dataUpdatedAt: historyResult.meta.fetchedAt,
     dataIsStale: historyResult.meta.isStale,
+    reliable,
   })
 }

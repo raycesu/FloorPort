@@ -232,11 +232,12 @@ export async function getCachedMarketChartSeries(
   const { soft, hard } = chartTtlForRange(range)
   const cacheKey = `cg:market_chart:${coingeckoId}:${range}:${days}`
 
-  return getOrCompute({
+  const result = await getOrCompute({
     key: cacheKey,
     softTtlMs: soft,
     hardTtlMs: hard,
     source: 'coingecko',
+    shouldPersist: (value) => Array.isArray(value) && value.length >= 2,
     fetcher: async () => {
       const url = `https://api.coingecko.com/api/v3/coins/${encodeURIComponent(coingeckoId)}/market_chart?vs_currency=usd&days=${days}`
       const response = await fetchCoinGeckoJson<{ prices?: [number, number][] }>(
@@ -247,9 +248,14 @@ export async function getCachedMarketChartSeries(
       )
       const data = response.data
       if (!data) return { value: [] as TimePricePoint[], status: response.status }
-      const raw: TimePricePoint[] = data.prices?.map(([timestamp, price]) => ({ timestamp, price })) ?? []
-      const points = normalizeToBucketPoints(raw, bucketTimestamps)
-      return { value: points, status: response.status }
+      const raw: TimePricePoint[] =
+        data.prices
+          ?.map(([timestamp, price]) => ({ timestamp, price }))
+          .filter((p) => Number.isFinite(p.timestamp) && Number.isFinite(p.price) && p.price > 0) ?? []
+      return { value: raw, status: response.status }
     },
   })
+  const points =
+    result.value.length >= 2 ? normalizeToBucketPoints(result.value, bucketTimestamps) : []
+  return { ...result, value: points }
 }

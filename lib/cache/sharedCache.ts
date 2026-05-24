@@ -31,6 +31,8 @@ export type GetOrComputeOptions<T> = {
   hardTtlMs: number
   source?: string
   fetcher: () => Promise<FetcherOutcome<T>>
+  /** When false, failed/empty fetches are not written to price_cache (avoids sticky empty chart rows). */
+  shouldPersist?: (value: T) => boolean
 }
 
 const readLocal = (key: string): LocalRow | null => {
@@ -99,13 +101,16 @@ const blockingRefresh = async <T>(
   softTtlMs: number,
   hardTtlMs: number,
   source: string,
-  fetcher: () => Promise<FetcherOutcome<T>>
+  fetcher: () => Promise<FetcherOutcome<T>>,
+  shouldPersist?: (value: T) => boolean
 ): Promise<CacheFetchResult<T>> => {
   recordCacheHardMiss()
   try {
     const outcome = await fetcher()
     const now = Date.now()
-    await writeDbRow(key, outcome.value, now, softTtlMs, hardTtlMs, outcome.status, source)
+    if (shouldPersist == null || shouldPersist(outcome.value)) {
+      await writeDbRow(key, outcome.value, now, softTtlMs, hardTtlMs, outcome.status, source)
+    }
     return { value: outcome.value, fetchedAt: now, isStale: false }
   } catch {
     const row = await readRow(key)
@@ -126,13 +131,16 @@ const fireAndForgetRefresh = <T>(
   softTtlMs: number,
   hardTtlMs: number,
   source: string,
-  fetcher: () => Promise<FetcherOutcome<T>>
+  fetcher: () => Promise<FetcherOutcome<T>>,
+  shouldPersist?: (value: T) => boolean
 ) => {
   void (async () => {
     try {
       const outcome = await fetcher()
       const now = Date.now()
-      await writeDbRow(key, outcome.value, now, softTtlMs, hardTtlMs, outcome.status, source)
+      if (shouldPersist == null || shouldPersist(outcome.value)) {
+        await writeDbRow(key, outcome.value, now, softTtlMs, hardTtlMs, outcome.status, source)
+      }
     } catch {
       /* keep stale row */
     }
@@ -140,26 +148,30 @@ const fireAndForgetRefresh = <T>(
 }
 
 export async function getOrCompute<T>(options: GetOrComputeOptions<T>): Promise<CacheFetchResult<T>> {
-  const { key, softTtlMs, hardTtlMs, source = 'unknown', fetcher } = options
+  const { key, softTtlMs, hardTtlMs, source = 'unknown', fetcher, shouldPersist } = options
   const existingFlight = inFlight.get(key) as Promise<CacheFetchResult<T>> | undefined
   if (existingFlight) return existingFlight
+
+  const isPersistable = (value: unknown) => (shouldPersist == null ? true : shouldPersist(value as T))
 
   const run = (async () => {
     const now = Date.now()
     const row = await readRow(key)
+    const rowValue = row?.value
+    const rowIsUsable = row != null && isPersistable(rowValue)
 
-    if (row && now < row.softExpiresAt) {
+    if (row && rowIsUsable && now < row.softExpiresAt) {
       recordCacheHit()
       return { value: row.value as T, fetchedAt: row.fetchedAt, isStale: false }
     }
 
-    if (row && now < row.hardExpiresAt) {
+    if (row && rowIsUsable && now < row.hardExpiresAt) {
       recordCacheSoftStale()
-      fireAndForgetRefresh(key, softTtlMs, hardTtlMs, source, fetcher)
+      fireAndForgetRefresh(key, softTtlMs, hardTtlMs, source, fetcher, shouldPersist)
       return { value: row.value as T, fetchedAt: row.fetchedAt, isStale: true }
     }
 
-    return blockingRefresh(key, softTtlMs, hardTtlMs, source, fetcher)
+    return blockingRefresh(key, softTtlMs, hardTtlMs, source, fetcher, shouldPersist)
   })()
 
   inFlight.set(key, run)

@@ -17,6 +17,18 @@ export const MAJOR_COINGECKO_PAIRS: Record<string, MajorPairConfig> = {
   'bitcoin-cash': { binance: 'BCHUSDT', coinbase: 'BCH-USD' },
   tron: { binance: 'TRXUSDT', coinbase: 'TRX-USD' },
   near: { binance: 'NEARUSDT', coinbase: 'NEAR-USD' },
+  uniswap: { binance: 'UNIUSDT', coinbase: 'UNI-USD' },
+  cosmos: { binance: 'ATOMUSDT', coinbase: 'ATOM-USD' },
+  aave: { binance: 'AAVEUSDT', coinbase: 'AAVE-USD' },
+  'shiba-inu': { binance: 'SHIBUSDT', coinbase: 'SHIB-USD' },
+  stellar: { binance: 'XLMUSDT', coinbase: 'XLM-USD' },
+  'ethereum-classic': { binance: 'ETCUSDT', coinbase: 'ETC-USD' },
+  filecoin: { binance: 'FILUSDT', coinbase: 'FIL-USD' },
+  arbitrum: { binance: 'ARBUSDT', coinbase: 'ARB-USD' },
+  optimism: { binance: 'OPUSDT', coinbase: 'OP-USD' },
+  'injective-protocol': { binance: 'INJUSDT', coinbase: 'INJ-USD' },
+  sui: { binance: 'SUIUSDT', coinbase: 'SUI-USD' },
+  'usd-coin': { binance: 'USDCUSDT', coinbase: 'USDC-USD' },
 }
 
 export const isMajorCoingeckoId = (id: string): boolean => Boolean(MAJOR_COINGECKO_PAIRS[id])

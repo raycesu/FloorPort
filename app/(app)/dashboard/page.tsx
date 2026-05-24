@@ -1,10 +1,9 @@
 import { AllocationChart } from '@/components/AllocationChart'
 import { DashboardHoldings } from '@/components/DashboardHoldings'
-import { PerformanceBars } from '@/components/PerformanceBars'
+import { PortfolioPerformanceChart } from '@/components/PortfolioPerformanceChart'
 import { PortfolioSummary } from '@/components/PortfolioSummary'
 import {
   combineHoldingsByAsset,
-  calcPortfolioHistorySeries,
   calcPortfolioSummary,
   enrichHoldingsWithMarketChanges,
   enrichHoldingsWithPrices,
@@ -12,7 +11,6 @@ import {
 import { mapRowToHolding } from '@/lib/mappers'
 import {
   getLiveChangePercent,
-  getLivePriceHistoryByHoldingIdWithMeta,
   getLivePrices,
   getLive7dChangePercentBySymbol,
   mergeHoldingChangePercents,
@@ -57,24 +55,18 @@ export default async function DashboardPage() {
     asset_type: h.asset_type,
     coingecko_id: h.coingecko_id,
   }))
-  const stockKeys = keys.filter((k) => k.asset_type === 'stock')
-  const [prices, change1dBySymbol, change7dBySymbol, hist24, stock7dHistory] = await Promise.all([
+  const [prices, change1dBySymbol, change7dBySymbol] = await Promise.all([
     getLivePrices(keys),
     getLiveChangePercent(keys),
     getLive7dChangePercentBySymbol(keys),
-    getLivePriceHistoryByHoldingIdWithMeta(keys, '24H', { preferFastFail: true }),
-    stockKeys.length
-      ? getLivePriceHistoryByHoldingIdWithMeta(stockKeys, '7D', { preferFastFail: true }).then((r) => r.history)
-      : Promise.resolve({}),
   ])
-  const changePercents = mergeHoldingChangePercents(keys, change1dBySymbol, change7dBySymbol, stock7dHistory)
+  const changePercents = mergeHoldingChangePercents(keys, change1dBySymbol, change7dBySymbol)
   const enriched = enrichHoldingsWithMarketChanges(
     enrichHoldingsWithPrices(holdings, prices),
     changePercents
   )
   const combined = combineHoldingsByAsset(enriched)
   const summary = calcPortfolioSummary(enriched)
-  const performanceSeries = calcPortfolioHistorySeries(enriched, hist24.history)
   const defaultWalletId = walletRows?.[0]?.id ? String(walletRows[0].id) : ''
 
   const firstName = user?.email?.split('@')[0] ?? 'there'
@@ -82,7 +74,6 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      {/* Greeting */}
       <div>
         <h1
           className="font-semibold"
@@ -95,18 +86,11 @@ export default async function DashboardPage() {
         </p>
       </div>
 
-      <PortfolioSummary
-        summary={summary}
-        marketDataMeta={{ fetchedAt: hist24.meta.fetchedAt, isStale: hist24.meta.isStale }}
-      />
+      <PortfolioSummary summary={summary} />
 
       <div className="grid gap-5 xl:grid-cols-[1.02fr_1.18fr]">
         <AllocationChart holdings={combined} />
-        <PerformanceBars
-          series={performanceSeries}
-          dataUpdatedAt={hist24.meta.fetchedAt}
-          dataIsStale={hist24.meta.isStale}
-        />
+        <PortfolioPerformanceChart />
       </div>
 
       <DashboardHoldings initialHoldings={combined} defaultWalletId={defaultWalletId} />

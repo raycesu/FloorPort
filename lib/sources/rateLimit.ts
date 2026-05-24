@@ -55,7 +55,7 @@ export const createRateGate = (minIntervalMs: number, maxConcurrency: number): R
 }
 
 const DEFAULT_CG_INTERVAL = getPositiveIntFromEnv('COINGECKO_MIN_REQUEST_INTERVAL_MS', 250)
-const DEFAULT_CG_CONCURRENCY = getPositiveIntFromEnv('COINGECKO_HISTORY_CONCURRENCY', 2)
+const DEFAULT_CG_CONCURRENCY = getPositiveIntFromEnv('COINGECKO_HISTORY_CONCURRENCY', 4)
 const DEFAULT_BN_INTERVAL = getPositiveIntFromEnv('BINANCE_MIN_REQUEST_INTERVAL_MS', 120)
 const DEFAULT_BN_CONCURRENCY = getPositiveIntFromEnv('BINANCE_MAX_CONCURRENCY', 4)
 const DEFAULT_CB_INTERVAL = getPositiveIntFromEnv('COINBASE_MIN_REQUEST_INTERVAL_MS', 200)

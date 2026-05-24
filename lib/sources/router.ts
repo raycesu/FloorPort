@@ -96,7 +96,11 @@ export async function getCryptoHistorySeriesWithMeta(
   bucketTimestamps: number[],
   preferFastFail?: boolean
 ): Promise<{ points: TimePricePoint[]; fetchedAt: number; isStale: boolean }> {
-  const maxAttempts = preferFastFail ? 1 : DEFAULT_COINGECKO_RETRY_ATTEMPTS
+  const maxAttempts = preferFastFail
+    ? 1
+    : range === '7d'
+      ? DEFAULT_COINGECKO_RETRY_ATTEMPTS
+      : Math.min(2, DEFAULT_COINGECKO_RETRY_ATTEMPTS)
   if (isMajorCoingeckoId(coingeckoId)) {
     const pair = MAJOR_COINGECKO_PAIRS[coingeckoId]
     const bn = await fetchBinanceKlinesSeries(pair.binance, range, bucketTimestamps)

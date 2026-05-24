@@ -1,5 +1,6 @@
+import { normalizeToBucketPoints } from '@/lib/sources/chartUtils'
+import type { TimePricePoint } from '@/lib/sources/types'
 import type { Holding, PortfolioSummary } from '@/types'
-import type { TimePricePoint } from '@/lib/prices'
 
 export function calcHoldingPnL(holding: Holding) {
   if (holding.asset_type === 'cash') {
@@ -136,53 +137,146 @@ export function calcWalletValues(holdings: Holding[]): Record<string, number> {
   return byWallet
 }
 
-/**
- * Build a portfolio value series from per-holding price history.
- * Falls back to current_price when history is unavailable.
- */
-export function calcPortfolioHistorySeries24h(
+/** True when at least one non-cash holding has usable history (≥2 points). */
+export function hasUsablePriceHistory(
   holdings: Holding[],
   priceHistoryByHoldingId: Record<string, TimePricePoint[]>
-): { timestamp: number; value: number }[] {
-  return calcPortfolioHistorySeries(holdings, priceHistoryByHoldingId)
+): boolean {
+  return holdings.some((h) => {
+    if (h.asset_type === 'cash') return false
+    return (priceHistoryByHoldingId[h.id] ?? []).length >= 2
+  })
 }
 
-export function calcPortfolioHistorySeries(
+/**
+ * Chart is showable when we have a multi-point portfolio series with positive value.
+ * Cash-heavy portfolios may have very small spread — that is still valid.
+ */
+function seriesHasPriceMovement(pts: TimePricePoint[]): boolean {
+  if (pts.length < 2) return false
+  const prices = pts.map((p) => p.price).filter((p) => Number.isFinite(p) && p > 0)
+  if (prices.length < 2) return false
+  const pmin = Math.min(...prices)
+  const pmax = Math.max(...prices)
+  return pmax > pmin * 1.001
+}
+
+export function isReliableChartSeries(
+  series: { timestamp: number; value: number }[],
   holdings: Holding[],
   priceHistoryByHoldingId: Record<string, TimePricePoint[]>
+): boolean {
+  if (series.length < 2) return false
+  const values = series.map((p) => p.value)
+  const max = Math.max(...values)
+  const min = Math.min(...values)
+  if (!Number.isFinite(max) || max <= 0) return false
+
+  const relativeSpread = (max - min) / max
+  const summary = calcPortfolioSummary(holdings)
+  const investedValue = summary.total_value - summary.cash_value
+  const needsAssetHistory = investedValue > summary.total_value * 0.05
+
+  const historyHasMovement = Object.values(priceHistoryByHoldingId).some(seriesHasPriceMovement)
+  if (needsAssetHistory && !historyHasMovement) return false
+  if (historyHasMovement && relativeSpread < 0.0005) return false
+  if (relativeSpread < 0.0003) return false
+
+  return true
+}
+
+function holdingSpotUsdPrice(h: Holding): number | null {
+  if (h.current_price != null && Number.isFinite(h.current_price) && h.current_price > 0) {
+    return h.current_price
+  }
+  return null
+}
+
+/**
+ * Build portfolio value over time. Cash and assets without history use spot price (flat).
+ * Assets with history use forward-filled bucket prices × quantity.
+ */
+export function calcPortfolioHistorySeries(
+  holdings: Holding[],
+  priceHistoryByHoldingId: Record<string, TimePricePoint[]>,
+  bucketTimestamps?: number[],
+  fiatUsdHistoryByCurrency?: Record<string, TimePricePoint[]>
 ): { timestamp: number; value: number }[] {
-  const allTimestamps = new Set<number>()
+  const fromBuckets = bucketTimestamps?.filter((t) => Number.isFinite(t)) ?? []
+  const fromHistory = new Set<number>()
   Object.values(priceHistoryByHoldingId).forEach((series) => {
-    series.forEach((point) => allTimestamps.add(point.timestamp))
+    series.forEach((point) => fromHistory.add(point.timestamp))
   })
-  const timestamps = [...allTimestamps].sort((a, b) => a - b)
+  const timestamps =
+    fromBuckets.length > 0
+      ? [...fromBuckets].sort((a, b) => a - b)
+      : [...fromHistory].sort((a, b) => a - b)
   if (timestamps.length === 0) return []
 
   const out = timestamps.map((timestamp) => ({ timestamp, value: 0 }))
+
   for (const h of holdings) {
+    const spotPrice = holdingSpotUsdPrice(h)
+    const flatContribution = spotPrice != null ? h.quantity * spotPrice : 0
+
     if (h.asset_type === 'cash') {
-      const cashValue = h.quantity * (h.current_price ?? 0)
-      out.forEach((p) => {
-        p.value += cashValue
-      })
+      const sym = h.symbol.toUpperCase()
+      const fiatSeries = fiatUsdHistoryByCurrency?.[sym]
+      if (fiatSeries && fiatSeries.length >= 2) {
+        const bucketed = normalizeToBucketPoints(fiatSeries, timestamps)
+        for (let i = 0; i < out.length; i++) {
+          const rate = bucketed[i]?.price ?? spotPrice
+          if (rate != null && rate > 0) out[i].value += h.quantity * rate
+        }
+      } else if (flatContribution > 0) {
+        out.forEach((p) => {
+          p.value += flatContribution
+        })
+      }
       continue
     }
 
-    const series = priceHistoryByHoldingId[h.id] ?? []
+    const series = (priceHistoryByHoldingId[h.id] ?? [])
+      .filter((p) => Number.isFinite(p.timestamp) && Number.isFinite(p.price) && p.price > 0)
+      .sort((a, b) => a.timestamp - b.timestamp)
+
     if (series.length === 0) {
-      const fallbackValue = h.quantity * (h.current_price ?? 0)
-      out.forEach((p) => {
-        p.value += fallbackValue
-      })
+      if (flatContribution > 0) {
+        out.forEach((p) => {
+          p.value += flatContribution
+        })
+      }
       continue
     }
 
-    const byTimestamp = new Map<number, number>()
-    series.forEach((p) => byTimestamp.set(p.timestamp, p.price))
-    out.forEach((p) => {
-      const price = byTimestamp.get(p.timestamp)
-      if (price != null) p.value += h.quantity * price
-    })
+    const bucketed = normalizeToBucketPoints(series, timestamps)
+    for (let i = 0; i < out.length; i++) {
+      const price = bucketed[i]?.price ?? spotPrice
+      if (price != null && price > 0) out[i].value += h.quantity * price
+      else if (flatContribution > 0) out[i].value += flatContribution
+    }
   }
-  return out
+
+  return out.filter((p) => p.value > 0)
+}
+
+/**
+ * Scale series so the last point matches live portfolio total (fixes missing prices / partial history).
+ */
+export function alignPortfolioSeriesToCurrentTotal(
+  series: { timestamp: number; value: number }[],
+  holdings: Holding[]
+): { timestamp: number; value: number }[] {
+  if (series.length === 0) return series
+  const target = calcPortfolioSummary(holdings).total_value
+  if (target <= 0) return series
+  const last = series[series.length - 1]?.value ?? 0
+  if (last <= 0) return series
+  const values = series.map((p) => p.value)
+  const spread = Math.max(...values) - Math.min(...values)
+  if (spread <= 0 || spread / Math.max(...values) < 0.0005) return series
+
+  const ratio = target / last
+  if (!Number.isFinite(ratio) || Math.abs(ratio - 1) < 0.02) return series
+  return series.map((p) => ({ ...p, value: p.value * ratio }))
 }

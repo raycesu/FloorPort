@@ -3,13 +3,11 @@ import { RANGE_CONFIG, type SupportedChartRange, type TimePricePoint } from '@/l
 
 export const toSupportedRangeKey = (range: PerformanceRange | string): SupportedChartRange => {
   const normalized = String(range).trim().toLowerCase() as SupportedChartRange
-  return normalized in RANGE_CONFIG ? normalized : '24h'
+  return normalized in RANGE_CONFIG ? normalized : '7d'
 }
 
 export function clampCoinGeckoDays(range: SupportedChartRange): number {
-  if (range === '24h') return 1
   if (range === '7d') return 7
-  if (range === '1m') return 30
   if (range === '3m') return 90
   return 365
 }
@@ -46,17 +44,13 @@ export function makeBucketTimestamps(durationMs: number, intervalMinutes: number
 }
 
 export function mapRangeToBinanceKline(range: SupportedChartRange): { interval: string; limit: number } {
-  if (range === '24h') return { interval: '15m', limit: 96 }
   if (range === '7d') return { interval: '2h', limit: 84 }
-  if (range === '1m') return { interval: '1d', limit: 32 }
-  if (range === '3m') return { interval: '1d', limit: 92 }
-  return { interval: '1w', limit: 54 }
+  if (range === '3m') return { interval: '3d', limit: 32 }
+  return { interval: '1w', limit: 52 }
 }
 
 export function mapRangeToCoinbaseGranularity(range: SupportedChartRange): { granularity: number; limit: number } {
-  if (range === '24h') return { granularity: 900, limit: 96 }
   if (range === '7d') return { granularity: 7200, limit: 84 }
-  if (range === '1m') return { granularity: 86400, limit: 32 }
-  if (range === '3m') return { granularity: 86400, limit: 92 }
-  return { granularity: 604800, limit: 54 }
+  if (range === '3m') return { granularity: 259200, limit: 32 }
+  return { granularity: 604800, limit: 52 }
 }

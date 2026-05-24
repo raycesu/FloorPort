@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:clean": "sh -c 'lsof -ti:3000,3001 2>/dev/null | xargs kill -9 2>/dev/null; exec next dev --turbopack'",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

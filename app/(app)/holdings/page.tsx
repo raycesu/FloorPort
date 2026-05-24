@@ -1,6 +1,5 @@
 import { HoldingsPageClient } from './HoldingsPageClient'
 import {
-  calcPortfolioHistorySeries,
   calcPortfolioSummary,
   calcWalletValues,
   enrichHoldingsWithMarketChanges,
@@ -9,7 +8,6 @@ import {
 import { mapRowToHolding, mapRowToWallet } from '@/lib/mappers'
 import {
   getLiveChangePercent,
-  getLivePriceHistoryByHoldingIdWithMeta,
   getLivePrices,
   getLive7dChangePercentBySymbol,
   mergeHoldingChangePercents,
@@ -49,40 +47,25 @@ export default async function HoldingsPage({
     .order('added_at', { ascending: false })
 
   const allHoldings = (allRows ?? []).map((r) => mapRowToHolding(r))
-  const keys = allHoldings.map((h) => ({
+  const allKeys = allHoldings.map((h) => ({
     id: h.id,
     symbol: h.symbol,
     asset_type: h.asset_type,
     coingecko_id: h.coingecko_id,
   }))
-  const stockKeys = keys.filter((k) => k.asset_type === 'stock')
-  const [prices, change1dBySymbol, change7dBySymbol, stock7dHistory] = await Promise.all([
-    getLivePrices(keys),
-    getLiveChangePercent(keys),
-    getLive7dChangePercentBySymbol(keys),
-    stockKeys.length
-      ? getLivePriceHistoryByHoldingIdWithMeta(stockKeys, '7D', { preferFastFail: true }).then((r) => r.history)
-      : Promise.resolve({}),
+
+  const [prices, change1dBySymbol, change7dBySymbol] = await Promise.all([
+    getLivePrices(allKeys),
+    getLiveChangePercent(allKeys),
+    getLive7dChangePercentBySymbol(allKeys),
   ])
-  const changePercents = mergeHoldingChangePercents(keys, change1dBySymbol, change7dBySymbol, stock7dHistory)
+  const changePercents = mergeHoldingChangePercents(allKeys, change1dBySymbol, change7dBySymbol)
   const enrichedAll = enrichHoldingsWithMarketChanges(
     enrichHoldingsWithPrices(allHoldings, prices),
     changePercents
   )
   const walletValues = calcWalletValues(enrichedAll)
-  const enriched = walletId
-    ? enrichedAll.filter((h) => h.wallet_id === walletId)
-    : []
-  const selectedKeys = enriched.map((h) => ({
-    id: h.id,
-    symbol: h.symbol,
-    asset_type: h.asset_type,
-    coingecko_id: h.coingecko_id,
-  }))
-  const hist24 = await getLivePriceHistoryByHoldingIdWithMeta(selectedKeys, '24H', {
-    preferFastFail: true,
-  })
-  const performanceSeries = calcPortfolioHistorySeries(enriched, hist24.history)
+  const enriched = walletId ? enrichedAll.filter((h) => h.wallet_id === walletId) : []
   const walletSummary = calcPortfolioSummary(enriched)
 
   return (
@@ -92,8 +75,6 @@ export default async function HoldingsPage({
       initialWalletId={walletId}
       walletValues={walletValues}
       walletSummary={walletSummary}
-      performanceSeries={performanceSeries}
-      performanceMeta={{ fetchedAt: hist24.meta.fetchedAt, isStale: hist24.meta.isStale }}
     />
   )
 }

@@ -53,11 +53,12 @@ export async function fetchBinanceKlinesSeries(
   const sym = symbol.toUpperCase()
   const cacheKey = `bn:klines:${sym}:${range}:${interval}:${limit}`
 
-  return getOrCompute({
+  const result = await getOrCompute({
     key: cacheKey,
     softTtlMs: soft,
     hardTtlMs: hard,
     source: 'binance',
+    shouldPersist: (value) => Array.isArray(value) && value.length >= 2,
     fetcher: async () => {
       const url = `${BINANCE_BASE}/api/v3/klines?symbol=${encodeURIComponent(sym)}&interval=${interval}&limit=${limit}`
       const res = await binanceGate.run(async () => fetch(url, { next: { revalidate: 120 } }))
@@ -72,10 +73,12 @@ export async function fetchBinanceKlinesSeries(
         const p = Number.parseFloat(String(close))
         if (Number.isFinite(t) && Number.isFinite(p) && p > 0) raw.push({ timestamp: t, price: p })
       }
-      const points = normalizeToBucketPoints(raw, bucketTimestamps)
-      return { value: points, status: res.status }
+      return { value: raw, status: res.status }
     },
   })
+  const points =
+    result.value.length >= 2 ? normalizeToBucketPoints(result.value, bucketTimestamps) : []
+  return { ...result, value: points }
 }
 
 export function parseBinanceTicker(t: Ticker24hr | undefined): { price: number; change24h?: number } | null {

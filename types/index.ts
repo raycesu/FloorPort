@@ -2,7 +2,7 @@ export type AssetType = 'crypto' | 'stock' | 'cash'
 
 export type DisplayCurrency = 'USD' | 'CAD'
 
-export type PerformanceRange = '24H' | '7D' | '1M' | '3M' | '1Y'
+export type PerformanceRange = '7D' | '3M' | '1Y'
 
 export type Wallet = {
   id: string

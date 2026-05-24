@@ -45,7 +45,20 @@ function getPositiveIntFromEnv(name: string, fallback: number): number {
   return parsed
 }
 
-const COINGECKO_HISTORY_CONCURRENCY = getPositiveIntFromEnv('COINGECKO_HISTORY_CONCURRENCY', 2)
+const COINGECKO_HISTORY_CONCURRENCY = getPositiveIntFromEnv('COINGECKO_HISTORY_CONCURRENCY', 4)
+const COINGECKO_HISTORY_COIN_TIMEOUT_MS = getPositiveIntFromEnv('COINGECKO_HISTORY_COIN_TIMEOUT_MS', 12_000)
+
+async function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => resolve(fallback), ms)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
 
 function touchTwelveDataCacheLimit() {
   while (twelveDataMemoryCache.size > TWELVE_DATA_CACHE_MAX_ENTRIES) {
@@ -345,9 +358,7 @@ function mapRangeToStockRequest(range: SupportedChartRange): {
   outputsize: number
   revalidateSeconds: number
 } {
-  if (range === '24h') return { interval: '15min', outputsize: 96, revalidateSeconds: 120 }
   if (range === '7d') return { interval: '2h', outputsize: 84, revalidateSeconds: 300 }
-  if (range === '1m') return { interval: '1day', outputsize: 40, revalidateSeconds: 600 }
   if (range === '3m') return { interval: '1day', outputsize: 120, revalidateSeconds: 900 }
   return { interval: '1week', outputsize: 60, revalidateSeconds: 1800 }
 }
@@ -498,14 +509,19 @@ async function getCryptoHistoryByCoingeckoIdsWithMeta(
   ids: string[],
   bucketTimestamps: number[],
   range: SupportedChartRange,
-  preferFastFail?: boolean
+  preferFastFail?: boolean,
+  historyCoinTimeoutMs = COINGECKO_HISTORY_COIN_TIMEOUT_MS
 ): Promise<{ series: Record<string, TimePricePoint[]>; meta: HistoryFetchMeta }> {
   const unique = [...new Set(ids.filter(Boolean))]
   if (unique.length === 0) {
     return { series: {}, meta: { fetchedAt: Date.now(), isStale: false } }
   }
   const rows = await mapWithConcurrency(unique, COINGECKO_HISTORY_CONCURRENCY, async (id) => {
-    const r = await getCryptoHistorySeriesWithMeta(id, range, bucketTimestamps, preferFastFail)
+    const r = await withTimeout(
+      getCryptoHistorySeriesWithMeta(id, range, bucketTimestamps, preferFastFail),
+      historyCoinTimeoutMs,
+      { points: [] as TimePricePoint[], fetchedAt: Date.now(), isStale: true }
+    )
     return { id, points: r.points, fetchedAt: r.fetchedAt, isStale: r.isStale }
   })
   const series: Record<string, TimePricePoint[]> = {}
@@ -553,6 +569,10 @@ async function getStockHistoryByRange(
 
 type PriceHistoryOptions = {
   preferFastFail?: boolean
+  /** Use the same bucket grid as portfolio aggregation (avoids flat charts from timestamp drift). */
+  bucketTimestamps?: number[]
+  /** Per-coin history timeout (portfolio charts use a longer default). */
+  historyCoinTimeoutMs?: number
 }
 
 export async function getLivePriceHistoryByHoldingId(
@@ -571,7 +591,10 @@ export async function getLivePriceHistoryByHoldingIdWithMeta(
 ): Promise<{ history: Record<string, TimePricePoint[]>; meta: HistoryFetchMeta }> {
   const rangeKey = toSupportedRangeKey(range)
   const config = RANGE_CONFIG[rangeKey]
-  const buckets = makeBucketTimestamps(config.durationMs, config.intervalMinutes)
+  const buckets =
+    options?.bucketTimestamps?.filter((t) => Number.isFinite(t)).length
+      ? options.bucketTimestamps
+      : makeBucketTimestamps(config.durationMs, config.intervalMinutes)
   const cryptoByCoingecko = new Map<string, string[]>()
   const legacyCryptoSymbols: string[] = []
   const stockSymbols: string[] = []
@@ -592,12 +615,14 @@ export async function getLivePriceHistoryByHoldingIdWithMeta(
     if (h.asset_type === 'stock') stockSymbols.push(h.symbol.toUpperCase())
   }
 
+  const coinTimeoutMs = options?.historyCoinTimeoutMs ?? COINGECKO_HISTORY_COIN_TIMEOUT_MS
   const [cgResult, legacyResult, stockSeries] = await Promise.all([
     getCryptoHistoryByCoingeckoIdsWithMeta(
       [...cryptoByCoingecko.keys()],
       buckets,
       rangeKey,
-      options?.preferFastFail
+      options?.preferFastFail,
+      coinTimeoutMs
     ),
     getCryptoHistoryByCoingeckoIdsWithMeta(
       [...new Set(legacyCryptoSymbols)]
@@ -605,7 +630,8 @@ export async function getLivePriceHistoryByHoldingIdWithMeta(
         .filter((id): id is string => Boolean(id)),
       buckets,
       rangeKey,
-      options?.preferFastFail
+      options?.preferFastFail,
+      coinTimeoutMs
     ),
     getStockHistoryByRange(stockSymbols, buckets, rangeKey),
   ])
@@ -629,11 +655,6 @@ export async function getLivePriceHistoryByHoldingIdWithMeta(
   }
 
   return { history: out, meta: mergeHistoryMeta(metas) }
-}
-
-/** 24h normalized price series per holding id, preserved for backwards compatibility. */
-export async function getLivePriceHistory24hByHoldingId(items: PriceKey[]): Promise<Record<string, TimePricePoint[]>> {
-  return getLivePriceHistoryByHoldingId(items, '24H')
 }
 
 export async function getHoldingChangePercents(

@@ -7,7 +7,7 @@ import { useDisplayCurrency } from '@/components/CurrencyContext'
 import { EditHoldingModal } from '@/components/EditHoldingModal'
 import { HoldingsTable } from '@/components/HoldingsTable'
 import { ModalShell } from '@/components/ModalShell'
-import { PerformanceBars } from '@/components/PerformanceBars'
+import { PortfolioPerformanceChart } from '@/components/PortfolioPerformanceChart'
 import { formatMoney, formatPercent } from '@/lib/format'
 import type { Holding, PortfolioSummary, Wallet } from '@/types'
 import { useRouter } from 'next/navigation'
@@ -168,16 +168,12 @@ export function HoldingsPageClient({
   initialWalletId,
   walletValues,
   walletSummary,
-  performanceSeries,
-  performanceMeta,
 }: {
   initialHoldings: Holding[]
   wallets: Wallet[]
   initialWalletId: string
   walletValues: Record<string, number>
   walletSummary: PortfolioSummary
-  performanceSeries: { timestamp: number; value: number }[]
-  performanceMeta?: { fetchedAt: number; isStale: boolean }
 }) {
   const router = useRouter()
   const { currency, usdToCad } = useDisplayCurrency()
@@ -530,13 +526,10 @@ export function HoldingsPageClient({
       </section>
 
       <div className="grid items-stretch gap-6 md:grid-cols-[minmax(0,1.08fr)_minmax(300px,0.92fr)] xl:gap-8">
-        <PerformanceBars
-          series={performanceSeries}
+        <PortfolioPerformanceChart
           title="Wallet Performance"
           description={`${currentWallet?.name ?? 'Selected wallet'} value across the selected range`}
           apiQuery={{ wallet_id: initialWalletId }}
-          dataUpdatedAt={performanceMeta?.fetchedAt}
-          dataIsStale={performanceMeta?.isStale}
         />
         <AllocationChart
           holdings={initialHoldings}

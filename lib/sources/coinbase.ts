@@ -19,11 +19,12 @@ export async function fetchCoinbaseCandlesSeries(
   const pid = productId.toUpperCase()
   const cacheKey = `cb:candles:${pid}:${range}:${granularity}:${limit}`
 
-  return getOrCompute({
+  const result = await getOrCompute({
     key: cacheKey,
     softTtlMs: soft,
     hardTtlMs: hard,
     source: 'coinbase',
+    shouldPersist: (value) => Array.isArray(value) && value.length >= 2,
     fetcher: async () => {
       const url = `${COINBASE_BASE}/products/${encodeURIComponent(pid)}/candles?granularity=${granularity}`
       const res = await coinbaseGate.run(async () => fetch(url, { next: { revalidate: 120 } }))
@@ -38,10 +39,12 @@ export async function fetchCoinbaseCandlesSeries(
         if (Number.isFinite(t) && Number.isFinite(close) && close > 0) raw.push({ timestamp: t, price: close })
       }
       raw.sort((a, b) => a.timestamp - b.timestamp)
-      const points = normalizeToBucketPoints(raw, bucketTimestamps)
-      return { value: points, status: res.status }
+      return { value: raw, status: res.status }
     },
   })
+  const points =
+    result.value.length >= 2 ? normalizeToBucketPoints(result.value, bucketTimestamps) : []
+  return { ...result, value: points }
 }
 
 export async function fetchCoinbaseTicker(productId: string): Promise<{ price: number } | null> {

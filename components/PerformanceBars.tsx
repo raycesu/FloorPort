@@ -3,7 +3,7 @@
 import { useDisplayCurrency } from '@/components/CurrencyContext'
 import { formatMoney } from '@/lib/format'
 import type { PerformanceRange } from '@/types'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -14,7 +14,7 @@ import {
   YAxis,
 } from 'recharts'
 
-const RANGE_OPTIONS: PerformanceRange[] = ['24H', '7D', '1M', '3M', '1Y']
+export const CHART_RANGE_OPTIONS: PerformanceRange[] = ['7D', '3M', '1Y']
 
 function toApiRange(range: PerformanceRange) {
   return range.toLowerCase()
@@ -22,11 +22,8 @@ function toApiRange(range: PerformanceRange) {
 
 function formatXAxisLabel(timestamp: number, range: PerformanceRange) {
   const date = new Date(timestamp)
-  if (range === '24H') {
-    return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-  }
   if (range === '7D') {
-    return date.toLocaleDateString([], { weekday: 'short' })
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: 'numeric' })
   }
   if (range === '1Y') {
     return date.toLocaleDateString([], { month: 'short', year: '2-digit' })
@@ -44,48 +41,91 @@ const formatFreshness = (updatedAt: number) => {
   return `${Math.floor(sec / 86400)}d ago`
 }
 
+type HistoryApiResponse = {
+  series?: { timestamp: number; value: number }[]
+  dataUpdatedAt?: number
+  dataIsStale?: boolean
+  reliable?: boolean
+}
+
 export function PerformanceBars({
   series,
-  initialRange = '24H',
+  initialRange = '7D',
   title,
   description,
   apiQuery,
   dataUpdatedAt,
   dataIsStale,
+  deferInitialFetch = false,
+  initialReliable,
+  lazyUntilVisible = false,
 }: {
   series: { timestamp: number; value: number }[]
   initialRange?: PerformanceRange
   title?: string
   description?: string
   apiQuery?: Record<string, string | undefined>
-  /** Server-side fetch time (ms) for the initial range */
   dataUpdatedAt?: number
   dataIsStale?: boolean
+  /** When true, always client-fetch ranges (used for progressive chart loading). */
+  deferInitialFetch?: boolean
+  initialReliable?: boolean
+  /** Defer all range fetches until the chart scrolls into view. */
+  lazyUntilVisible?: boolean
 }) {
   const { currency, usdToCad } = useDisplayCurrency()
+  const chartRootRef = useRef<HTMLDivElement>(null)
+  const [isInView, setIsInView] = useState(!lazyUntilVisible)
   const [selectedRange, setSelectedRange] = useState<PerformanceRange>(initialRange)
-  const [seriesByRange, setSeriesByRange] = useState<Record<PerformanceRange, { timestamp: number; value: number }[]>>({
-    [initialRange]: series,
-  } as Record<PerformanceRange, { timestamp: number; value: number }[]>)
+  const [seriesByRange, setSeriesByRange] = useState<Partial<Record<PerformanceRange, { timestamp: number; value: number }[]>>>(
+    deferInitialFetch ? {} : { [initialRange]: series }
+  )
+  const [reliableByRange, setReliableByRange] = useState<Partial<Record<PerformanceRange, boolean>>>(
+    deferInitialFetch || initialReliable == null
+      ? {}
+      : { [initialRange]: initialReliable }
+  )
   const [loadingRange, setLoadingRange] = useState<PerformanceRange | null>(null)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [hasMounted, setHasMounted] = useState(false)
   const [freshnessByRange, setFreshnessByRange] = useState<Partial<Record<PerformanceRange, RangeFreshness>>>({})
   const [freshnessLabel, setFreshnessLabel] = useState<string | null>(null)
   const apiQueryKey = useMemo(() => JSON.stringify(apiQuery ?? {}), [apiQuery])
-  /** Ranges that have finished a successful fetch (including empty series). Failed fetches are not added so user can retry by switching tabs. */
-  const rangeFetchDoneRef = useRef<Set<PerformanceRange>>(new Set([initialRange]))
+  const rangeFetchDoneRef = useRef<Set<PerformanceRange>>(
+    new Set(deferInitialFetch ? [] : [initialRange])
+  )
+  const fetchAbortRef = useRef<AbortController | null>(null)
+
+  const CHART_FETCH_TIMEOUT_MS = 55_000
 
   useEffect(() => {
     setHasMounted(true)
   }, [])
 
   useEffect(() => {
-    if (dataUpdatedAt == null) return
+    if (!lazyUntilVisible) {
+      setIsInView(true)
+      return
+    }
+    const node = chartRootRef.current
+    if (!node) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) setIsInView(true)
+      },
+      { rootMargin: '120px', threshold: 0.08 }
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [lazyUntilVisible, apiQueryKey])
+
+  useEffect(() => {
+    if (dataUpdatedAt == null || deferInitialFetch) return
     setFreshnessByRange((prev) => ({
       ...prev,
       [initialRange]: { updatedAt: dataUpdatedAt, stale: dataIsStale ?? false },
     }))
-  }, [initialRange, dataUpdatedAt, dataIsStale])
+  }, [initialRange, dataUpdatedAt, dataIsStale, deferInitialFetch])
 
   useEffect(() => {
     const meta = freshnessByRange[selectedRange]
@@ -100,77 +140,237 @@ export function PerformanceBars({
   }, [selectedRange, freshnessByRange])
 
   useEffect(() => {
+    if (deferInitialFetch) {
+      rangeFetchDoneRef.current = new Set()
+      setSeriesByRange({})
+      setReliableByRange({})
+      return
+    }
     rangeFetchDoneRef.current = new Set([initialRange])
-    setSeriesByRange({ [initialRange]: series } as Record<PerformanceRange, { timestamp: number; value: number }[]>)
-  }, [apiQueryKey, initialRange, series])
+    setSeriesByRange({ [initialRange]: series })
+    if (initialReliable != null) {
+      setReliableByRange({ [initialRange]: initialReliable })
+    }
+  }, [apiQueryKey, initialRange, series, deferInitialFetch, initialReliable])
 
-  useEffect(() => {
-    if (rangeFetchDoneRef.current.has(selectedRange)) return
+  const fetchRange = useCallback(
+    async (range: PerformanceRange) => {
+      fetchAbortRef.current?.abort()
+      const controller = new AbortController()
+      fetchAbortRef.current = controller
+      const timeoutId = window.setTimeout(() => controller.abort(), CHART_FETCH_TIMEOUT_MS)
 
-    let cancelled = false
-    async function load() {
-      setLoadingRange(selectedRange)
+      setLoadingRange(range)
+      setFetchError(null)
       try {
-        const params = new URLSearchParams({ range: toApiRange(selectedRange) })
+        const params = new URLSearchParams({ range: toApiRange(range) })
         const query = JSON.parse(apiQueryKey) as Record<string, string | undefined>
         Object.entries(query).forEach(([key, value]) => {
           if (value) params.set(key, value)
         })
-        const res = await fetch(`/api/portfolio-history?${params.toString()}`)
-        if (!res.ok) throw new Error('Failed to load history')
-        const json = (await res.json()) as {
-          series?: { timestamp: number; value: number }[]
-          dataUpdatedAt?: number
-          dataIsStale?: boolean
-        }
-        if (!cancelled) {
-          const nextSeries = json.series ?? []
-          setSeriesByRange((prev) => ({
-            ...prev,
-            [selectedRange]: nextSeries,
-          }))
-          if (json.dataUpdatedAt != null) {
-            setFreshnessByRange((prev) => ({
-              ...prev,
-              [selectedRange]: { updatedAt: json.dataUpdatedAt!, stale: json.dataIsStale ?? false },
-            }))
+        const res = await fetch(`/api/portfolio-history?${params.toString()}`, {
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          if (res.status === 404) {
+            throw new Error(
+              'Chart API not found. Stop the dev server and run npm run dev:clean (or npm run dev).'
+            )
           }
-          rangeFetchDoneRef.current.add(selectedRange)
+          throw new Error(`Failed to load history (${res.status})`)
         }
-      } catch {
-        if (!cancelled) {
-          setSeriesByRange((prev) => ({ ...prev, [selectedRange]: [] }))
-        }
-      } finally {
-        if (!cancelled) setLoadingRange(null)
-      }
-    }
-    void load()
-    return () => {
-      cancelled = true
-    }
-  }, [apiQueryKey, selectedRange])
+        const json = (await res.json()) as HistoryApiResponse
+        const nextSeries = json.series ?? []
+        const reliable = json.reliable ?? nextSeries.length >= 2
 
-  const data = useMemo(
-    () =>
-      (seriesByRange[selectedRange] ?? []).map((point) => ({
-        ...point,
-        label: formatXAxisLabel(point.timestamp, selectedRange),
-      })),
-    [selectedRange, seriesByRange]
+        setSeriesByRange((prev) => ({ ...prev, [range]: nextSeries }))
+        if (json.dataUpdatedAt != null) {
+          setFreshnessByRange((prev) => ({
+            ...prev,
+            [range]: {
+              updatedAt: json.dataUpdatedAt!,
+              stale: json.dataIsStale ?? !reliable,
+            },
+          }))
+        }
+        setReliableByRange((prev) => ({ ...prev, [range]: reliable }))
+        rangeFetchDoneRef.current.add(range)
+      } catch (error) {
+        if (controller.signal.aborted) {
+          setFetchError('Chart request timed out. Try again or switch to a shorter range.')
+        } else {
+          const message = error instanceof Error ? error.message : 'Failed to load chart data'
+          setFetchError(message)
+        }
+        setSeriesByRange((prev) => ({ ...prev, [range]: [] }))
+        setReliableByRange((prev) => ({ ...prev, [range]: false }))
+        rangeFetchDoneRef.current.add(range)
+      } finally {
+        window.clearTimeout(timeoutId)
+        setLoadingRange((current) => (current === range ? null : current))
+      }
+    },
+    [apiQueryKey]
   )
 
-  if (data.length === 0 && loadingRange == null) {
+  useEffect(() => {
+    if (!isInView) return
+    if (rangeFetchDoneRef.current.has(selectedRange)) return
+    void fetchRange(selectedRange)
+  }, [apiQueryKey, selectedRange, fetchRange, isInView])
+
+  useEffect(() => () => fetchAbortRef.current?.abort(), [])
+
+  const data = useMemo(() => {
+    const raw = [...(seriesByRange[selectedRange] ?? [])].sort((a, b) => a.timestamp - b.timestamp)
+    const byTs = new Map<number, number>()
+    for (const point of raw) {
+      if (Number.isFinite(point.timestamp) && Number.isFinite(point.value)) {
+        byTs.set(point.timestamp, point.value)
+      }
+    }
+    return [...byTs.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([timestamp, value]) => ({
+        timestamp,
+        value,
+        label: formatXAxisLabel(timestamp, selectedRange),
+      }))
+  }, [selectedRange, seriesByRange])
+
+  const isReliable = reliableByRange[selectedRange] === true
+  const isWaitingForView = lazyUntilVisible && !isInView
+  const hasChartData = data.length >= 2
+  const chartValues = data.map((d) => d.value)
+  const chartMax = chartValues.length ? Math.max(...chartValues) : 0
+  const chartMin = chartValues.length ? Math.min(...chartValues) : 0
+  const chartRelativeSpread = chartMax > 0 ? (chartMax - chartMin) / chartMax : 0
+  const isDegenerateFlat = hasChartData && chartRelativeSpread < 0.0003
+  const isLoadingChart =
+    isWaitingForView || (loadingRange === selectedRange && !hasChartData)
+
+  const chartShellStyle = {
+    background: '#161b24',
+    border: '1px solid rgba(159,174,197,0.16)',
+    color: '#8f98aa',
+  }
+
+  const rangeTabs = (
+    <div
+      className="inline-flex flex-wrap rounded-full p-1"
+      style={{ background: '#202735', border: '1px solid rgba(159,174,197,0.12)' }}
+    >
+      {CHART_RANGE_OPTIONS.map((range) => {
+        const active = range === selectedRange
+        return (
+          <button
+            key={range}
+            type="button"
+            onClick={() => setSelectedRange(range)}
+            className="rounded-full px-3 py-1.5 text-xs font-semibold transition-colors"
+            style={
+              active
+                ? { background: '#8b7ed8', color: '#ffffff' }
+                : { color: '#aeb8c9' }
+            }
+            aria-pressed={active}
+          >
+            {range}
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  if (isLoadingChart) {
     return (
       <div
-        className="flex h-[380px] items-center justify-center rounded-[24px] text-sm"
-        style={{
-          background: '#161b24',
-          border: '1px solid rgba(159,174,197,0.16)',
-          color: '#8f98aa',
-        }}
+        ref={chartRootRef}
+        className="flex h-[380px] flex-col rounded-[24px]"
+        style={chartShellStyle}
+        role="status"
+        aria-live="polite"
+        aria-busy={!isWaitingForView}
       >
-        Portfolio trend appears here once data is available
+        <div
+          className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between"
+          style={{ borderBottom: '1px solid rgba(159,174,197,0.12)' }}
+        >
+          <div className="space-y-1">
+            <h2 className="font-semibold" style={{ fontSize: '15px', color: '#f5f7fb' }}>
+              {title ?? `${selectedRange} Performance`}
+            </h2>
+            <p className="text-[13px]" style={{ color: '#93a0b4' }}>
+              {description ?? 'Portfolio value across the selected range'}
+            </p>
+          </div>
+          {rangeTabs}
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-sm">
+          <p>
+            {isWaitingForView
+              ? 'Chart loads when you scroll here'
+              : `Loading ${selectedRange} chart data…`}
+          </p>
+          {!isWaitingForView ? (
+            <p className="text-xs" style={{ color: '#93a0b4' }}>
+              {selectedRange === '7D'
+                ? 'Fetching recent market history'
+                : 'Longer ranges load on demand — this may take a minute'}
+            </p>
+          ) : null}
+        </div>
+      </div>
+    )
+  }
+
+  if (data.length === 0 || (isDegenerateFlat && !isReliable)) {
+    const handleRetryChart = () => {
+      rangeFetchDoneRef.current.delete(selectedRange)
+      void fetchRange(selectedRange)
+    }
+    return (
+      <div
+        ref={chartRootRef}
+        className="flex h-[380px] flex-col rounded-[24px]"
+        style={chartShellStyle}
+      >
+        <div
+          className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between"
+          style={{ borderBottom: '1px solid rgba(159,174,197,0.12)' }}
+        >
+          <div className="space-y-1">
+            <h2 className="font-semibold" style={{ fontSize: '15px', color: '#f5f7fb' }}>
+              {title ?? `${selectedRange} Performance`}
+            </h2>
+            <p className="text-[13px]" style={{ color: '#93a0b4' }}>
+              {description ?? 'Portfolio value across the selected range'}
+            </p>
+          </div>
+          {rangeTabs}
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-sm">
+          <p>
+            {fetchError ??
+              (isDegenerateFlat
+                ? 'Price history did not load — chart would be misleading as a flat line.'
+                : 'Portfolio trend appears here once data is available')}
+          </p>
+          <button
+            type="button"
+            onClick={handleRetryChart}
+            className="rounded-full px-4 py-2 text-xs font-semibold"
+            style={{ background: '#8b7ed8', color: '#ffffff' }}
+            aria-label={`Retry loading ${selectedRange} chart`}
+          >
+            Retry chart
+          </button>
+          {fetchError ? (
+            <p className="text-xs" style={{ color: '#93a0b4' }}>
+              Check the terminal running Next.js for server errors
+            </p>
+          ) : null}
+        </div>
       </div>
     )
   }
@@ -185,12 +385,13 @@ export function PerformanceBars({
   const minValue = values.length ? Math.min(...values) : 0
   const maxValue = values.length ? Math.max(...values) : 0
   const spread = maxValue - minValue
-  const padding = spread > 0 ? spread * 0.18 : Math.max(Math.abs(maxValue) * 0.02, 1)
-  const yDomain: [number, number] = [minValue - padding, maxValue + padding]
+  const minPadding = Math.max(maxValue * 0.008, spread > 0 ? spread * 0.12 : maxValue * 0.02)
+  const yDomain: [number, number] = [minValue - minPadding, maxValue + minPadding]
   const badgeLabel = `${isPositive ? '+' : ''}${pct.toFixed(2)}%`
 
   return (
     <div
+      ref={chartRootRef}
       className="flex h-full min-w-0 flex-col rounded-[24px]"
       style={{
         background: '#161b24',
@@ -221,29 +422,7 @@ export function PerformanceBars({
           >
             {badgeLabel}
           </span>
-          <div
-            className="inline-flex flex-wrap rounded-full p-1"
-            style={{ background: '#202735', border: '1px solid rgba(159,174,197,0.12)' }}
-          >
-            {RANGE_OPTIONS.map((range) => {
-              const active = range === selectedRange
-              return (
-                <button
-                  key={range}
-                  type="button"
-                  onClick={() => setSelectedRange(range)}
-                  className="rounded-full px-3 py-1.5 text-xs font-semibold transition-colors"
-                  style={
-                    active
-                      ? { background: '#8b7ed8', color: '#ffffff' }
-                      : { color: '#aeb8c9' }
-                  }
-                >
-                  {range}
-                </button>
-              )
-            })}
-          </div>
+          {rangeTabs}
         </div>
       </div>
 
@@ -260,21 +439,28 @@ export function PerformanceBars({
                 </defs>
                 <CartesianGrid strokeDasharray="0" stroke="rgba(159,174,197,0.08)" vertical={false} />
                 <XAxis
-                  dataKey="label"
+                  dataKey="timestamp"
+                  type="number"
+                  scale="time"
+                  domain={['dataMin', 'dataMax']}
                   minTickGap={28}
                   tick={{ fill: '#8f98aa', fontSize: 11 }}
                   axisLine={false}
                   tickLine={false}
+                  tickFormatter={(ts) => formatXAxisLabel(ts as number, selectedRange)}
                 />
                 <YAxis
                   tick={{ fill: '#8f98aa', fontSize: 11 }}
                   domain={yDomain}
                   axisLine={false}
                   tickLine={false}
-                  width={84}
-                  tickFormatter={(v) =>
-                    `${currency === 'USD' ? '$' : 'C$'}${Math.round((v as number) * axisDivisor).toLocaleString('en-US')}`
-                  }
+                  width={88}
+                  tickFormatter={(v) => {
+                    const display = (v as number) * axisDivisor
+                    return `${currency === 'USD' ? '$' : 'C$'}${display.toLocaleString('en-US', {
+                      maximumFractionDigits: 0,
+                    })}`
+                  }}
                 />
                 <Tooltip
                   cursor={{ stroke: 'rgba(159,174,197,0.16)', strokeWidth: 1 }}
@@ -302,7 +488,7 @@ export function PerformanceBars({
                   }}
                 />
                 <Area
-                  type="monotone"
+                  type="linear"
                   dataKey="value"
                   stroke={lineColor}
                   strokeWidth={2.75}
@@ -314,17 +500,12 @@ export function PerformanceBars({
             </ResponsiveContainer>
           ) : null}
         </div>
-        {loadingRange ? (
-          <p className="mt-4 text-[12px]" style={{ color: '#93a0b4' }}>
-            Loading {loadingRange} history...
-          </p>
-        ) : null}
         {freshnessLabel && freshnessByRange[selectedRange] ? (
           <p className="mt-2 text-[12px]" style={{ color: '#8f98aa' }}>
             Updated {freshnessLabel}
-            {freshnessByRange[selectedRange]?.stale ? (
+            {freshnessByRange[selectedRange]?.stale || !isReliable ? (
               <span className="ml-1 text-[#c4a35a]" aria-label="Data may be delayed">
-                · delayed feed
+                · partial or delayed data
               </span>
             ) : null}
           </p>
