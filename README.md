@@ -68,6 +68,47 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+### 5. (Optional) Weekly Telegram portfolio summary
+
+FloorPort can run a weekly cron job that snapshots your holdings' live prices into the database and sends you a Telegram message summarizing the week — total portfolio % change, and the biggest % loser/gainer among your assets. This also keeps the Supabase project active with regular writes.
+
+**Create a Telegram bot and get your chat ID:**
+
+1. Message [@BotFather](https://t.me/BotFather) on Telegram, run `/newbot`, and follow the prompts. Save the bot token it gives you.
+2. Send any message to your new bot (search for it by the username you chose).
+3. Visit `https://api.telegram.org/bot<your_bot_token>/getUpdates` in your browser and find `"chat":{"id":...}` in the response — that number is your chat ID.
+
+**Add these environment variables** (in `.env.local` for local runs, and in your host's environment variable settings for production):
+
+```env
+CRON_SECRET=a_long_random_string_you_make_up
+TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
+TELEGRAM_CHAT_ID=your_chat_id
+CRON_USER_ID=your_supabase_auth_user_uuid
+```
+
+`CRON_USER_ID` is your own user's UUID, found in the Supabase Dashboard under **Authentication → Users**.
+
+**Run the migration:** apply `supabase/migrations/20260805220000_portfolio_snapshots.sql` (or re-run the updated `supabase/schema.sql`) in the Supabase SQL Editor to create the `portfolio_snapshots` table.
+
+**Schedule it with [cronjob.org](https://cronjob.org):**
+
+1. Create a new cron job pointing at `https://<your-deployed-domain>/api/cron/weekly-summary`.
+2. Set the request method to `GET`.
+3. Add a custom header: `Authorization: Bearer <the CRON_SECRET you set above>`.
+4. Set the schedule to run weekly (e.g. every Sunday at 9am).
+
+Each run fetches live prices, stores a snapshot, and sends a Telegram message like:
+
+```
+📊 FloorPort Weekly Summary
+
+Total: $12,345.67 (📉 -3.20% this week, -$408.12)
+
+📉 Biggest loser: SOL -8.42%
+📈 Biggest gainer: AAPL +2.13%
+```
+
 ## Project Structure
 
 ```
