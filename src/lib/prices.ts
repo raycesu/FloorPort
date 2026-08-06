@@ -280,10 +280,6 @@ async function getStockTimeSeries(
 
 export { getCoinGeckoId, COINGECKO_IDS }
 
-export async function getCryptoPricesByCoingeckoIds(ids: string[]): Promise<Record<string, number>> {
-  return getCryptoSpotPricesByCoingeckoIds(ids)
-}
-
 export async function getCryptoPrices(symbols: string[]): Promise<Record<string, number>> {
   const upper = symbols.map((s) => s.toUpperCase())
   const ids = upper.map((s) => COINGECKO_IDS[s]).filter(Boolean) as string[]
@@ -308,12 +304,6 @@ export async function getCryptoQuotes(symbols: string[]): Promise<Record<string,
   }
   if (m.size === 0) return {}
   return getCachedQuotes24hByCoingeckoIds(m)
-}
-
-export async function getCryptoQuotesByCoingeckoIds(
-  idBySymbol: Map<string, string>
-): Promise<Record<string, CryptoQuote>> {
-  return getCrypto24hQuotesBySymbol(idBySymbol)
 }
 
 export async function getStockPrices(symbols: string[]): Promise<Record<string, number>> {
@@ -657,23 +647,6 @@ export async function getLivePriceHistoryByHoldingIdWithMeta(
   return { history: out, meta: mergeHistoryMeta(metas) }
 }
 
-export async function getHoldingChangePercents(
-  items: PriceKey[]
-): Promise<Record<string, { change_1d?: number; change_7d?: number }>> {
-  const change1dBySymbol = await getLiveChangePercent(items)
-  const change7dBySymbol = await getLive7dChangePercentBySymbol(items)
-  const stockKeys = items.filter((h) => h.asset_type === 'stock')
-  const stock7dHistory =
-    stockKeys.length > 0
-      ? await getLivePriceHistoryByHoldingId(
-          stockKeys.map((h) => ({ id: h.id, symbol: h.symbol, asset_type: h.asset_type, coingecko_id: h.coingecko_id })),
-          '7D',
-          { preferFastFail: true }
-        )
-      : {}
-  return mergeHoldingChangePercents(items, change1dBySymbol, change7dBySymbol, stock7dHistory)
-}
-
 export function mergeHoldingChangePercents(
   items: PriceKey[],
   change1dBySymbol: Record<string, number>,
@@ -710,39 +683,6 @@ export function mergeHoldingChangePercents(
     out[item.id] = {
       change_1d: change1dBySymbol[symbolKey],
       change_7d: change7dBySymbol[symbolKey],
-    }
-  }
-
-  return out
-}
-
-export function getHoldingChangePercentsFromHistory(
-  items: PriceKey[],
-  change1dBySymbol: Record<string, number>,
-  historyByHoldingId: Record<string, TimePricePoint[]>
-): Record<string, { change_1d?: number; change_7d?: number }> {
-  const out: Record<string, { change_1d?: number; change_7d?: number }> = {}
-
-  for (const item of items) {
-    if (item.asset_type === 'cash') {
-      out[item.id] = {}
-      continue
-    }
-
-    const symbolKey = item.symbol.toUpperCase()
-    const series = historyByHoldingId[item.id] ?? []
-    let change7d: number | undefined
-    if (series.length >= 2) {
-      const first = series[0]?.price
-      const last = series[series.length - 1]?.price
-      if (first && last && Number.isFinite(first) && Number.isFinite(last) && first > 0) {
-        change7d = ((last - first) / first) * 100
-      }
-    }
-
-    out[item.id] = {
-      change_1d: change1dBySymbol[symbolKey],
-      change_7d: change7d,
     }
   }
 

@@ -32,11 +32,6 @@ export async function getFiatUsdRates(): Promise<FiatUsdRates> {
   }
 }
 
-export function convertUsdToDisplay(usdAmount: number, currency: 'USD' | 'CAD', usdToCad: number): number {
-  if (currency === 'USD') return usdAmount
-  return usdAmount * usdToCad
-}
-
 const SUPPORTED_FIAT_HISTORY = new Set(['CAD', 'EUR', 'GBP'])
 
 /** Historical USD value of 1 unit of fiat, aligned to chart buckets. */

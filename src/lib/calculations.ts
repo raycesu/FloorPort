@@ -137,17 +137,6 @@ export function calcWalletValues(holdings: Holding[]): Record<string, number> {
   return byWallet
 }
 
-/** True when at least one non-cash holding has usable history (≥2 points). */
-export function hasUsablePriceHistory(
-  holdings: Holding[],
-  priceHistoryByHoldingId: Record<string, TimePricePoint[]>
-): boolean {
-  return holdings.some((h) => {
-    if (h.asset_type === 'cash') return false
-    return (priceHistoryByHoldingId[h.id] ?? []).length >= 2
-  })
-}
-
 /**
  * Chart is showable when we have a multi-point portfolio series with positive value.
  * Cash-heavy portfolios may have very small spread — that is still valid.

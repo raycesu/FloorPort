@@ -23,10 +23,6 @@ export const TTL_CHART_LONG_HARD_MS = getPositiveIntFromEnv(
   21 * 24 * 60 * 60 * 1000
 )
 
-/** FX */
-export const TTL_FX_SOFT_MS = getPositiveIntFromEnv('PRICE_CACHE_SOFT_TTL_MS_FX', 5 * 60 * 1000)
-export const TTL_FX_HARD_MS = getPositiveIntFromEnv('PRICE_CACHE_HARD_TTL_MS_FX', 24 * 60 * 60 * 1000)
-
 /** Batched 7d change (coins/markets) */
 export const TTL_CHANGE_7D_SOFT_MS = getPositiveIntFromEnv('PRICE_CACHE_SOFT_TTL_MS_CHANGE_7D', 60 * 60 * 1000)
 export const TTL_CHANGE_7D_HARD_MS = getPositiveIntFromEnv('PRICE_CACHE_HARD_TTL_MS_CHANGE_7D', 24 * 60 * 60 * 1000)

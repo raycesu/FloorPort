@@ -35,11 +35,3 @@ export const recordCacheBypassLocal = () => {
 }
 
 export const getCacheStatsSnapshot = (): CacheStatSnapshot => ({ ...stats })
-
-export const resetCacheStats = () => {
-  stats.hits = 0
-  stats.softStaleServed = 0
-  stats.hardMiss = 0
-  stats.failureStale = 0
-  stats.bypassLocal = 0
-}
