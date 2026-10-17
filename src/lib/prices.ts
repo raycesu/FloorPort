@@ -372,6 +372,13 @@ export async function getLivePrices(items: PriceKey[]): Promise<Record<string, n
       if (rate != null) out[h.id] = rate
       continue
     }
+    if (
+      h.asset_type === 'crypto' &&
+      (h.symbol.toUpperCase() === 'USDC' || h.coingecko_id?.trim() === 'usd-coin')
+    ) {
+      out[h.id] = 1
+      continue
+    }
     if (h.asset_type === 'crypto') {
       const cg = h.coingecko_id?.trim()
       if (cg) {
